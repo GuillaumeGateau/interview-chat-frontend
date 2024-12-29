@@ -33,6 +33,15 @@ function App() {
 
   const chatContainerRef = useRef(null);
 
+  useEffect(() => {
+    if (
+      window.location.protocol !== 'https:' &&
+      window.location.hostname !== 'localhost'
+    ) {
+      window.location.href = `https://${window.location.hostname}${window.location.pathname}${window.location.search}`;
+    }
+  }, []);
+
   // Auto-scroll to bottom whenever messages change
   useEffect(() => {
     if (chatContainerRef.current) {
