@@ -19,25 +19,36 @@ function App() {
   const [name, setName] = useState("");
   const [company, setCompany] = useState("");
   const [email, setEmail] = useState("");
-
   const [sessionToken, setSessionToken] = useState("");
   const [showChat, setShowChat] = useState(false);
 
-  // Chat messages: an array of {sender: 'user'|'bot', text: string}
-  const [messages, setMessages] = useState([]);
+  // Chat messages start with an initial bot message:
+  const [messages, setMessages] = useState([
+    {
+      sender: 'bot',
+      text: "Hi, I'm William's virtual AI. Ask me any question about my experience or approach to product. I'll do my best to answer!"
+    }
+  ]);
   const [userMessage, setUserMessage] = useState("");
 
-  // Ref to the chat container for auto-scrolling
   const chatContainerRef = useRef(null);
 
-  // Whenever messages change, scroll to bottom
+  // Auto-scroll to bottom whenever messages change
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [messages]);
 
-  // 1. Init Session
+  // Debugging tool to log height
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      console.log("Chat container height:", chatContainerRef.current.offsetHeight);
+    } else {
+      console.log("chatContainerRef is null or not rendered yet.");
+    }
+  }, [showChat]);
+
   const handleInitSession = async () => {
     try {
       const response = await fetch(`${BACKEND_URL}/api/v1/session/init`, {
@@ -53,7 +64,6 @@ function App() {
     }
   };
 
-  // 2. Send a message
   const handleSendMessage = async () => {
     if (!sessionToken) {
       alert("Please fill out the form and start interviewing first.");
@@ -61,14 +71,10 @@ function App() {
     }
     if (!userMessage.trim()) return;
 
-    // Immediately add the user's message to the chat
     setMessages(prev => [...prev, { sender: 'user', text: userMessage }]);
-
-    // Clear the input right away
     setUserMessage("");
 
     try {
-      // Send to backend
       const response = await fetch(`${BACKEND_URL}/api/v1/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -78,15 +84,12 @@ function App() {
         })
       });
       const data = await response.json();
-
-      // Add bot response
       setMessages(prev => [...prev, { sender: 'bot', text: data.response }]);
     } catch (error) {
       console.error("Error sending chat message:", error);
     }
   };
 
-  // 3. Press Enter to send
   const handleKeyDown = (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -96,113 +99,163 @@ function App() {
 
   return (
     <Container
-      maxWidth="sm"
+      disableGutters
       sx={{
-        mt: 5,
-        mb: 5,
+        width: { xs: '100%', md: '50%' },
+        height: { xs: '100vh', md: '90vh' },
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center'
+        mx: 'auto',
+        mt: { xs: 0, md: 5 },
+        mb: { xs: 0, md: 5 },
+        border: { xs: 'none', md: '1px solid #ccc' },
+        borderRadius: { xs: 0, md: 2 },
+        backgroundColor: 'white',
+        color: 'black',
+        fontSize: { xs: '0.9rem', md: '1.5rem' },
+        overflow: 'hidden'
       }}
     >
-      <Typography variant="h4" sx={{ mb: 3 }}>
+      {/* Title */}
+      <Typography
+        variant="h4"
+        sx={{
+          p: 2,
+          textAlign: 'center',
+          borderBottom: '1px solid #eee',
+          flexShrink: 0
+        }}
+      >
         AI WILLIAM
       </Typography>
 
-      {/* Form card - only if chat not started */}
-      {!showChat && (
-        <Card sx={{ width: '100%', mb: 4 }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Please fill out your info:
-            </Typography>
-            <Stack spacing={2} mt={2}>
-              <TextField
-                label="Name"
-                variant="outlined"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                fullWidth
-              />
-              <TextField
-                label="Company"
-                variant="outlined"
-                value={company}
-                onChange={(e) => setCompany(e.target.value)}
-                fullWidth
-              />
-              <TextField
-                label="Email"
-                variant="outlined"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                fullWidth
-              />
-              <Button variant="contained" onClick={handleInitSession}>
-                Start Interviewing
-              </Button>
-            </Stack>
-          </CardContent>
-        </Card>
-      )}
+      <Box
+        sx={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden'
+        }}
+      >
+        {!showChat && (
+          <Card sx={{ flexShrink: 0, mb: 2 }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Please fill out your info:
+              </Typography>
+              <Stack spacing={2} mt={2}>
+                <TextField
+                  label="Name"
+                  variant="outlined"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  fullWidth
+                />
+                <TextField
+                  label="Company"
+                  variant="outlined"
+                  value={company}
+                  onChange={(e) => setCompany(e.target.value)}
+                  fullWidth
+                />
+                <TextField
+                  label="Email"
+                  variant="outlined"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  fullWidth
+                />
+                <Button variant="contained" onClick={handleInitSession}>
+                  Start Interviewing
+                </Button>
+              </Stack>
+            </CardContent>
+          </Card>
+        )}
 
-      {/* Chat card - visible after "Start Interviewing" */}
-      {showChat && (
-        <Card sx={{ width: '100%' }}>
-          <CardContent>
-            <Box
-              ref={chatContainerRef}
+        {showChat && (
+          <Card
+            sx={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden'
+            }}
+          >
+            <CardContent
               sx={{
-                height: 400,
-                overflowY: 'auto',
-                p: 2,
-                border: '1px solid #ccc',
-                borderRadius: 2,
-                mb: 2,
-                backgroundColor: '#fdfdfd',
+                flex: 1,
                 display: 'flex',
-                flexDirection: 'column'
+                flexDirection: 'column',
+                overflow:'hidden',
+                p: 0
               }}
             >
-              {messages.map((msg, idx) => {
-                const isUser = (msg.sender === 'user');
-                return (
-                  <Box
-                    key={idx}
-                    sx={{
-                      maxWidth: '75%',
-                      alignSelf: isUser ? 'end' : 'start',
-                      backgroundColor: isUser ? '#1976d2' : '#e0e0e0',
-                      color: isUser ? '#fff' : '#000',
-                      borderRadius: 2,
-                      padding: '8px 12px',
-                      marginY: '6px',
-                      textAlign: isUser ? 'right' : 'left',
-                      wordWrap: 'break-word'
-                    }}
-                  >
-                    {msg.text}
-                  </Box>
-                );
-              })}
-            </Box>
+              {/* Chat Area */}
+              <Box
+                ref={chatContainerRef}
+                sx={{
+                  flex: 1,
+                  overflowY: 'auto',
+                  height: '70%', // Fixed height for chat
+                  p: 2,
+                  border: '1px solid #ccc',
+                  borderRadius: 2,
+                  backgroundColor: '#fdfdfd',
+                  display: 'flex',
+                  flexDirection: 'column'
+                }}
+              >
+                {messages.map((msg, idx) => {
+                  const isUser = msg.sender === 'user';
+                  return (
+                    <Box
+                      key={idx}
+                      sx={{
+                        maxWidth: '75%',
+                        alignSelf: isUser ? 'end' : 'start',
+                        backgroundColor: isUser ? '#1976d2' : '#e0e0e0',
+                        color: isUser ? '#fff' : '#000',
+                        borderRadius: 2,
+                        padding: '8px 12px',
+                        marginY: '6px',
+                        textAlign: isUser ? 'right' : 'left',
+                        wordWrap: 'break-word'
+                      }}
+                    >
+                      {msg.text}
+                    </Box>
+                  );
+                })}
+              </Box>
 
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <TextField
-                label="Type your question"
-                variant="outlined"
-                fullWidth
-                value={userMessage}
-                onChange={(e) => setUserMessage(e.target.value)}
-                onKeyDown={handleKeyDown}
-              />
-              <IconButton color="primary" onClick={handleSendMessage}>
-                <SendIcon />
-              </IconButton>
-            </Box>
-          </CardContent>
-        </Card>
-      )}
+              {/* Input Row */}
+              <Box
+                sx={{
+                  flexShrink: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  p: 2,
+                  borderTop: '1px solid #ccc'
+                }}
+              >
+                <TextField
+                  label="Type your question"
+                  variant="outlined"
+                  fullWidth
+                  value={userMessage}
+                  onChange={(e) => setUserMessage(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                />
+                <IconButton color="primary" onClick={handleSendMessage}>
+                  <SendIcon />
+                </IconButton>
+              </Box>
+            </CardContent>
+          </Card>
+        )}
+      </Box>
     </Container>
   );
 }
