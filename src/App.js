@@ -33,13 +33,18 @@ function App() {
 
   const chatContainerRef = useRef(null);
 
+  // Safari Height Fix
   useEffect(() => {
-    if (
-      window.location.protocol !== 'https:' &&
-      window.location.hostname !== 'localhost'
-    ) {
-      window.location.href = `https://${window.location.hostname}${window.location.pathname}${window.location.search}`;
-    }
+    const updateHeight = () => {
+      const appHeight = window.innerHeight;
+      document.documentElement.style.setProperty('--app-height', `${appHeight}px`);
+    };
+    window.addEventListener('resize', updateHeight);
+    updateHeight();
+
+    return () => {
+      window.removeEventListener('resize', updateHeight);
+    };
   }, []);
 
   // Auto-scroll to bottom whenever messages change
@@ -48,15 +53,6 @@ function App() {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [messages]);
-
-  // Debugging tool to log height
-  useEffect(() => {
-    if (chatContainerRef.current) {
-      console.log("Chat container height:", chatContainerRef.current.offsetHeight);
-    } else {
-      console.log("chatContainerRef is null or not rendered yet.");
-    }
-  }, [showChat]);
 
   const handleInitSession = async () => {
     try {
@@ -111,7 +107,7 @@ function App() {
       disableGutters
       sx={{
         width: { xs: '100%', md: '50%' },
-        height: { xs: '100vh', md: '90vh' },
+        height: { xs: 'calc(var(--app-height))', md: '90vh' }, // Use app-height for Safari
         display: 'flex',
         flexDirection: 'column',
         mx: 'auto',
@@ -196,7 +192,7 @@ function App() {
                 flex: 1,
                 display: 'flex',
                 flexDirection: 'column',
-                overflow:'hidden',
+                overflow: 'hidden',
                 p: 0
               }}
             >
