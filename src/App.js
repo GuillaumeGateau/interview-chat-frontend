@@ -26,7 +26,7 @@ function App() {
   const [messages, setMessages] = useState([
     {
       sender: 'bot',
-      text: "Hi, I'm William's virtual AI. Ask me any question about my experience or approach to product. I'll do my best to answer!"
+      text: "Hi, I'm William's virtual AI interviewer. Ask me any question about my experience or approach to product. I'll do my best to answer!"
     }
   ]);
   const [userMessage, setUserMessage] = useState("");
