@@ -11,15 +11,16 @@ import {
   Stack
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
+import { v4 as uuidv4 } from 'uuid';
 
 const BACKEND_URL =
   process.env.REACT_APP_BACKEND_URL || "http://localhost:5000";
 
 function App() {
+  // Only collecting "name" for now
   const [name, setName] = useState("");
-  const [company, setCompany] = useState("");
-  const [email, setEmail] = useState("");
-  const [sessionToken, setSessionToken] = useState("");
+
+  const [conversationId, setConversationId] = useState("");
   const [showChat, setShowChat] = useState(false);
 
   // Chat messages start with an initial bot message:
@@ -54,47 +55,69 @@ function App() {
     }
   }, [messages]);
 
-  const handleInitSession = async () => {
-    try {
-      const response = await fetch(`${BACKEND_URL}/api/v1/session/init`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, company, email })
-      });
-      const data = await response.json();
-      setSessionToken(data.sessionToken);
-      setShowChat(true);
-    } catch (error) {
-      console.error("Error initializing session:", error);
-    }
+  /**
+   * "Start Interviewing" button handler.
+   * Here we just generate a new conversationId on the front end
+   * and reveal the chat panel. We only store "name" for display/logs if needed.
+   */
+  const handleInitSession = () => {
+    // Generate a new conversationId:
+    const newId = uuidv4();
+    setConversationId(newId);
+    setShowChat(true);
   };
 
+  /**
+   * Send a user message to the backend.
+   * We pass the conversationId in the request body
+   * so the server can keep track of this user's conversation.
+   */
   const handleSendMessage = async () => {
-    if (!sessionToken) {
-      alert("Please fill out the form and start interviewing first.");
-      return;
-    }
     if (!userMessage.trim()) return;
 
+    // Show the user's message immediately in the chat UI
     setMessages(prev => [...prev, { sender: 'user', text: userMessage }]);
+    const userMessageCopy = userMessage;
     setUserMessage("");
+
+    // If, for some reason, we don't have a conversationId,
+    // we can generate one on the fly:
+    let tempConversationId = conversationId;
+    if (!tempConversationId) {
+      tempConversationId = uuidv4();
+      setConversationId(tempConversationId);
+    }
 
     try {
       const response = await fetch(`${BACKEND_URL}/api/v1/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sessionToken,
-          message: userMessage
+          conversationId: tempConversationId,
+          message: userMessageCopy
         })
       });
       const data = await response.json();
+
+      // If the backend returns a conversationId, store it
+      if (data.conversationId && !conversationId) {
+        setConversationId(data.conversationId);
+      }
+
+      // Add the bot's response
       setMessages(prev => [...prev, { sender: 'bot', text: data.response }]);
     } catch (error) {
       console.error("Error sending chat message:", error);
+      setMessages(prev => [...prev, {
+        sender: 'bot',
+        text: "Sorry, something went wrong. Please try again."
+      }]);
     }
   };
 
+  /**
+   * Allows user to press Enter to send message
+   */
   const handleKeyDown = (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -107,7 +130,7 @@ function App() {
       disableGutters
       sx={{
         width: { xs: '100%', md: '50%' },
-        height: { xs: 'calc(var(--app-height))', md: '90vh' }, // Use app-height for Safari
+        height: { xs: 'calc(var(--app-height))', md: '90vh' },
         display: 'flex',
         flexDirection: 'column',
         mx: 'auto',
@@ -142,11 +165,12 @@ function App() {
           overflow: 'hidden'
         }}
       >
+        {/* User Info Form (Hidden once chat is shown) */}
         {!showChat && (
           <Card sx={{ flexShrink: 0, mb: 2 }}>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                Please fill out your info:
+                Please enter your name:
               </Typography>
               <Stack spacing={2} mt={2}>
                 <TextField
@@ -154,20 +178,6 @@ function App() {
                   variant="outlined"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  fullWidth
-                />
-                <TextField
-                  label="Company"
-                  variant="outlined"
-                  value={company}
-                  onChange={(e) => setCompany(e.target.value)}
-                  fullWidth
-                />
-                <TextField
-                  label="Email"
-                  variant="outlined"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
                   fullWidth
                 />
                 <Button variant="contained" onClick={handleInitSession}>
@@ -202,7 +212,7 @@ function App() {
                 sx={{
                   flex: 1,
                   overflowY: 'auto',
-                  height: '70%', // Fixed height for chat
+                  height: '70%',
                   p: 2,
                   border: '1px solid #ccc',
                   borderRadius: 2,
