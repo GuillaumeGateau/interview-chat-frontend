@@ -8,22 +8,23 @@ import {
   Button,
   IconButton,
   Box,
-  Stack
+  Stack,
+  Switch,
+  FormControlLabel
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
+import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import { v4 as uuidv4 } from 'uuid';
 
-const BACKEND_URL =
-  process.env.REACT_APP_BACKEND_URL || "http://localhost:5000";
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:5000";
 
 function App() {
-  // Only collecting "name" for now
   const [name, setName] = useState("");
-
   const [conversationId, setConversationId] = useState("");
   const [showChat, setShowChat] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const audioRef = useRef(null);
 
-  // Chat messages start with an initial bot message:
   const [messages, setMessages] = useState([
     {
       sender: 'bot',
@@ -31,10 +32,8 @@ function App() {
     }
   ]);
   const [userMessage, setUserMessage] = useState("");
-
   const chatContainerRef = useRef(null);
 
-  // Safari Height Fix
   useEffect(() => {
     const updateHeight = () => {
       const appHeight = window.innerHeight;
@@ -42,46 +41,29 @@ function App() {
     };
     window.addEventListener('resize', updateHeight);
     updateHeight();
-
-    return () => {
-      window.removeEventListener('resize', updateHeight);
-    };
+    return () => window.removeEventListener('resize', updateHeight);
   }, []);
 
-  // Auto-scroll to bottom whenever messages change
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [messages]);
 
-  /**
-   * "Start Interviewing" button handler.
-   * Here we just generate a new conversationId on the front end
-   * and reveal the chat panel. We only store "name" for display/logs if needed.
-   */
   const handleInitSession = () => {
-    // Generate a new conversationId:
     const newId = uuidv4();
     setConversationId(newId);
     setShowChat(true);
   };
 
-  /**
-   * Send a user message to the backend.
-   * We pass the conversationId in the request body
-   * so the server can keep track of this user's conversation.
-   */
-  const handleSendMessage = async () => {
+  const handleSendMessage = async (e) => {
+    e?.preventDefault();
     if (!userMessage.trim()) return;
 
-    // Show the user's message immediately in the chat UI
     setMessages(prev => [...prev, { sender: 'user', text: userMessage }]);
     const userMessageCopy = userMessage;
     setUserMessage("");
 
-    // If, for some reason, we don't have a conversationId,
-    // we can generate one on the fly:
     let tempConversationId = conversationId;
     if (!tempConversationId) {
       tempConversationId = uuidv4();
@@ -89,7 +71,8 @@ function App() {
     }
 
     try {
-      const response = await fetch(`${BACKEND_URL}/api/v1/chat`, {
+      const endpoint = voiceEnabled ? '/api/v1/chat-voice' : '/api/v1/chat';
+      const response = await fetch(`${BACKEND_URL}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -97,31 +80,34 @@ function App() {
           message: userMessageCopy
         })
       });
-      const data = await response.json();
 
-      // If the backend returns a conversationId, store it
-      if (data.conversationId && !conversationId) {
-        setConversationId(data.conversationId);
+      if (voiceEnabled) {
+        const blob = await response.blob();
+        const audioUrl = URL.createObjectURL(blob);
+        audioRef.current.src = audioUrl;
+        audioRef.current.play();
+        setMessages(prev => [...prev, { sender: 'bot', text: null, audio: audioUrl }]);
+      } else {
+        const data = await response.json();
+        if (data.conversationId && !conversationId) {
+          setConversationId(data.conversationId);
+        }
+        setMessages(prev => [...prev, { sender: 'bot', text: data.response, audio: null }]);
       }
-
-      // Add the bot's response
-      setMessages(prev => [...prev, { sender: 'bot', text: data.response }]);
     } catch (error) {
-      console.error("Error sending chat message:", error);
+      console.error("Error:", error);
       setMessages(prev => [...prev, {
         sender: 'bot',
-        text: "Sorry, something went wrong. Please try again."
+        text: "Sorry, something went wrong. Please try again.",
+        audio: null
       }]);
     }
   };
 
-  /**
-   * Allows user to press Enter to send message
-   */
   const handleKeyDown = (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      handleSendMessage();
+      handleSendMessage(e);
     }
   };
 
@@ -144,7 +130,6 @@ function App() {
         overflow: 'hidden'
       }}
     >
-      {/* Title */}
       <Typography
         variant="h4"
         sx={{
@@ -165,8 +150,7 @@ function App() {
           overflow: 'hidden'
         }}
       >
-        {/* User Info Form (Hidden once chat is shown) */}
-        {!showChat && (
+        {!showChat ? (
           <Card sx={{ flexShrink: 0, mb: 2 }}>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -186,9 +170,7 @@ function App() {
               </Stack>
             </CardContent>
           </Card>
-        )}
-
-        {showChat && (
+        ) : (
           <Card
             sx={{
               flex: 1,
@@ -206,7 +188,18 @@ function App() {
                 p: 0
               }}
             >
-              {/* Chat Area */}
+              <Box sx={{ p: 2 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={voiceEnabled}
+                      onChange={(e) => setVoiceEnabled(e.target.checked)}
+                    />
+                  }
+                  label="Voice Response"
+                />
+              </Box>
+
               <Box
                 ref={chatContainerRef}
                 sx={{
@@ -218,7 +211,7 @@ function App() {
                   borderRadius: 2,
                   backgroundColor: '#fdfdfd',
                   display: 'flex',
-                  flexDirection: 'column'
+                  flexDirection: 'column',
                 }}
               >
                 {messages.map((msg, idx) => {
@@ -235,17 +228,44 @@ function App() {
                         padding: '8px 12px',
                         marginY: '6px',
                         textAlign: isUser ? 'right' : 'left',
-                        wordWrap: 'break-word'
+                        wordWrap: 'break-word',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1,
                       }}
                     >
-                      {msg.text}
+                      {/* Show text for user messages */}
+                      {isUser && msg.text}
+
+                      {/* Show text or audio playback for bot messages */}
+                      {!isUser && (
+                        <>
+                          {voiceEnabled ? (
+                            msg.audio && (
+                              <IconButton
+                                size="small"
+                                onClick={() => {
+                                  audioRef.current.src = msg.audio;
+                                  audioRef.current.play();
+                                }}
+                                sx={{ color: isUser ? '#fff' : '#000' }}
+                              >
+                                <VolumeUpIcon />
+                              </IconButton>
+                            )
+                          ) : (
+                            msg.text
+                          )}
+                        </>
+                      )}
                     </Box>
                   );
                 })}
               </Box>
 
-              {/* Input Row */}
               <Box
+                component="form"
+                onSubmit={handleSendMessage}
                 sx={{
                   flexShrink: 0,
                   display: 'flex',
@@ -263,7 +283,7 @@ function App() {
                   onChange={(e) => setUserMessage(e.target.value)}
                   onKeyDown={handleKeyDown}
                 />
-                <IconButton color="primary" onClick={handleSendMessage}>
+                <IconButton color="primary" type="submit">
                   <SendIcon />
                 </IconButton>
               </Box>
@@ -271,6 +291,7 @@ function App() {
           </Card>
         )}
       </Box>
+      <audio ref={audioRef} style={{ display: 'none' }} />
     </Container>
   );
 }
