@@ -10,11 +10,12 @@ import {
   Box,
   Stack,
   Switch,
-  FormControlLabel
+  FormControlLabel,
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import { v4 as uuidv4 } from 'uuid';
+import './App.css';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:5000";
 
@@ -22,14 +23,14 @@ function App() {
   const [name, setName] = useState("");
   const [conversationId, setConversationId] = useState("");
   const [showChat, setShowChat] = useState(false);
-  const [voiceEnabled, setVoiceEnabled] = useState(true); // Default to true
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
   const audioRef = useRef(null);
 
   const [messages, setMessages] = useState([
     {
       sender: 'bot',
-      text: "Hi, I'm William's virtual AI interviewer. Ask me any question about my experience or approach to product. I'll do my best to answer!"
-    }
+      text: "Hi, I'm William's virtual AI interviewer. Ask me any question about my experience or approach to product. I'll do my best to answer!",
+    },
   ]);
   const [userMessage, setUserMessage] = useState("");
   const chatContainerRef = useRef(null);
@@ -50,7 +51,6 @@ function App() {
     }
   }, [messages]);
 
-  // Pause audio playback when voiceEnabled is toggled off
   useEffect(() => {
     if (!voiceEnabled && audioRef.current && !audioRef.current.paused) {
       audioRef.current.pause();
@@ -67,7 +67,7 @@ function App() {
     e?.preventDefault();
     if (!userMessage.trim()) return;
 
-    setMessages(prev => [...prev, { sender: 'user', text: userMessage }]);
+    // Add user's message to chat
     const userMessageCopy = userMessage;
     setUserMessage("");
 
@@ -77,6 +77,14 @@ function App() {
       setConversationId(tempConversationId);
     }
 
+    setMessages(prev => [
+      ...prev, 
+      { sender: 'user', text: userMessageCopy },
+      { sender: 'bot', thinking: true, text: "Let me think about that for a moment..." }
+    ]);
+
+    
+
     try {
       const endpoint = voiceEnabled ? '/api/v1/chat-voice' : '/api/v1/chat';
       const response = await fetch(`${BACKEND_URL}${endpoint}`, {
@@ -84,8 +92,8 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           conversationId: tempConversationId,
-          message: userMessageCopy
-        })
+          message: userMessageCopy,
+        }),
       });
 
       if (voiceEnabled) {
@@ -93,21 +101,32 @@ function App() {
         const audioUrl = URL.createObjectURL(blob);
         audioRef.current.src = audioUrl;
         audioRef.current.play();
-        setMessages(prev => [...prev, { sender: 'bot', text: null, audio: audioUrl }]);
+        
+        setMessages(prev => [
+          ...prev.slice(0, -1), // Remove thinking message
+          { sender: 'bot', text: null, audio: audioUrl },
+        ]);
       } else {
         const data = await response.json();
         if (data.conversationId && !conversationId) {
           setConversationId(data.conversationId);
         }
-        setMessages(prev => [...prev, { sender: 'bot', text: data.response, audio: null }]);
+        
+        setMessages(prev => [
+          ...prev.slice(0, -1), // Remove thinking message
+          { sender: 'bot', text: data.response, audio: null },
+        ]);
       }
     } catch (error) {
       console.error("Error:", error);
-      setMessages(prev => [...prev, {
-        sender: 'bot',
-        text: "Sorry, something went wrong. Please try again.",
-        audio: null
-      }]);
+      setMessages(prev => [
+        ...prev.slice(0, -1), // Remove thinking message
+        {
+          sender: 'bot',
+          text: "Sorry, something went wrong. Please try again.",
+          audio: null,
+        },
+      ]);
     }
   };
 
@@ -120,14 +139,11 @@ function App() {
 
   const handleAudioToggle = (audioUrl) => {
     if (!audioRef.current.src || audioRef.current.src !== audioUrl) {
-      // Load and start playing if not already loaded
       audioRef.current.src = audioUrl;
       audioRef.current.play();
     } else if (audioRef.current.paused) {
-      // Resume playback
       audioRef.current.play();
     } else {
-      // Pause playback
       audioRef.current.pause();
     }
   };
@@ -148,7 +164,7 @@ function App() {
         backgroundColor: 'white',
         color: 'black',
         fontSize: { xs: '0.9rem', md: '1.5rem' },
-        overflow: 'hidden'
+        overflow: 'hidden',
       }}
     >
       <Typography
@@ -157,7 +173,7 @@ function App() {
           p: 2,
           textAlign: 'center',
           borderBottom: '1px solid #eee',
-          flexShrink: 0
+          flexShrink: 0,
         }}
       >
         AI WILLIAM
@@ -168,7 +184,7 @@ function App() {
           flex: 1,
           display: 'flex',
           flexDirection: 'column',
-          overflow: 'hidden'
+          overflow: 'hidden',
         }}
       >
         {!showChat ? (
@@ -197,7 +213,7 @@ function App() {
               flex: 1,
               display: 'flex',
               flexDirection: 'column',
-              overflow: 'hidden'
+              overflow: 'hidden',
             }}
           >
             <CardContent
@@ -206,7 +222,7 @@ function App() {
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',
-                p: 0
+                p: 0,
               }}
             >
               <Box sx={{ p: 2 }}>
@@ -254,12 +270,15 @@ function App() {
                         alignItems: 'center',
                         gap: 1,
                       }}
+                      className={msg.thinking ? 'thinking-box' : ''}
                     >
                       {isUser && msg.text}
 
                       {!isUser && (
                         <>
-                          {voiceEnabled && msg.audio ? (
+                          {msg.thinking ? (
+                            msg.text
+                          ) : voiceEnabled && msg.audio ? (
                             <IconButton
                               size="small"
                               onClick={() => handleAudioToggle(msg.audio)}
@@ -286,7 +305,7 @@ function App() {
                   alignItems: 'center',
                   gap: 1,
                   p: 2,
-                  borderTop: '1px solid #ccc'
+                  borderTop: '1px solid #ccc',
                 }}
               >
                 <TextField
