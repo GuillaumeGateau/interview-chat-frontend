@@ -29,7 +29,7 @@ function App() {
   const [messages, setMessages] = useState([
     {
       sender: 'bot',
-      text: "Hi, I'm William's virtual AI interviewer. Ask me any question about my experience or approach to product. I'll do my best to answer!",
+      text: "Hi,I'm William's virtual AI interviewer. Ask me any question about my experience or approach to product. I'll do my best to answer!",
     },
   ]);
   const [userMessage, setUserMessage] = useState("");
@@ -67,6 +67,18 @@ function App() {
     const newId = uuidv4();
     setConversationId(newId);
     setShowChat(true);
+
+    // Add personalized welcome message
+    setMessages([{
+      sender: 'bot',
+      text: `Hi ${name}, I'm William's virtual AI interviewer. Ask me any question about my experience or approach to product. I'll do my best to answer!`,
+    }]);
+
+    // Create a silent audio element to request sound permissions
+    const silentAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
+    silentAudio.play().catch(() => {
+      console.log('Sound permissions may be restricted');
+    });
   };
 
   const handleSendMessage = async (e) => {
@@ -111,8 +123,12 @@ function App() {
 
         // Only auto-play if autoplay is enabled
         if (autoplayEnabled) {
-          audioRef.current.src = audioUrl;
-          audioRef.current.play();
+          try {
+            audioRef.current.src = audioUrl;
+            await audioRef.current.play();
+          } catch (error) {
+            console.log('Autoplay prevented, manual play required');
+          }
         }
       } else {
         const data = await response.json();

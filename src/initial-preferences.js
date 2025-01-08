@@ -37,7 +37,6 @@ function InitialPreferences({ onSessionStart }) {
     localStorage.setItem('initialVoicePreference', voiceEnabled.toString());
     localStorage.setItem('initialAutoplayPreference', autoplayEnabled.toString());
 
-    // Pass preferences to parent component
     onSessionStart({
       name,
       voiceEnabled,
@@ -100,4 +99,4 @@ function InitialPreferences({ onSessionStart }) {
   );
 }
 
-export default InitialPreferences
+export default InitialPreferences;
