@@ -5,16 +5,15 @@ import {
   CardContent,
   Typography,
   TextField,
-  Button,
   IconButton,
   Box,
-  Stack,
   Switch,
   FormControlLabel,
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import { v4 as uuidv4 } from 'uuid';
+import InitialPreferences from './initial-preferences';
 import './App.css';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:5000";
@@ -24,6 +23,7 @@ function App() {
   const [conversationId, setConversationId] = useState("");
   const [showChat, setShowChat] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [autoplayEnabled, setAutoplayEnabled] = useState(true);
   const audioRef = useRef(null);
 
   const [messages, setMessages] = useState([
@@ -57,7 +57,13 @@ function App() {
     }
   }, [voiceEnabled]);
 
-  const handleInitSession = () => {
+  const handleInitSession = (preferences) => {
+    const { name, voiceEnabled, autoplayEnabled } = preferences;
+    
+    setName(name);
+    setVoiceEnabled(voiceEnabled);
+    setAutoplayEnabled(autoplayEnabled);
+    
     const newId = uuidv4();
     setConversationId(newId);
     setShowChat(true);
@@ -83,8 +89,6 @@ function App() {
       { sender: 'bot', thinking: true, text: "Let me think about that for a moment..." }
     ]);
 
-    
-
     try {
       const endpoint = voiceEnabled ? '/api/v1/chat-voice' : '/api/v1/chat';
       const response = await fetch(`${BACKEND_URL}${endpoint}`, {
@@ -99,13 +103,17 @@ function App() {
       if (voiceEnabled) {
         const blob = await response.blob();
         const audioUrl = URL.createObjectURL(blob);
-        audioRef.current.src = audioUrl;
-        audioRef.current.play();
         
         setMessages(prev => [
           ...prev.slice(0, -1), // Remove thinking message
           { sender: 'bot', text: null, audio: audioUrl },
         ]);
+
+        // Only auto-play if autoplay is enabled
+        if (autoplayEnabled) {
+          audioRef.current.src = audioUrl;
+          audioRef.current.play();
+        }
       } else {
         const data = await response.json();
         if (data.conversationId && !conversationId) {
@@ -188,25 +196,7 @@ function App() {
         }}
       >
         {!showChat ? (
-          <Card sx={{ flexShrink: 0, mb: 2 }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Please enter your name:
-              </Typography>
-              <Stack spacing={2} mt={2}>
-                <TextField
-                  label="Name"
-                  variant="outlined"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  fullWidth
-                />
-                <Button variant="contained" onClick={handleInitSession}>
-                  Start Interviewing
-                </Button>
-              </Stack>
-            </CardContent>
-          </Card>
+          <InitialPreferences onSessionStart={handleInitSession} />
         ) : (
           <Card
             sx={{
@@ -225,7 +215,7 @@ function App() {
                 p: 0,
               }}
             >
-              <Box sx={{ p: 2 }}>
+              <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <FormControlLabel
                   control={
                     <Switch
@@ -235,6 +225,17 @@ function App() {
                   }
                   label="Voice Response"
                 />
+                {voiceEnabled && (
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={autoplayEnabled}
+                        onChange={(e) => setAutoplayEnabled(e.target.checked)}
+                      />
+                    }
+                    label="Auto-Play"
+                  />
+                )}
               </Box>
 
               <Box
