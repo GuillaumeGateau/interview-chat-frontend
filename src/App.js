@@ -22,7 +22,7 @@ function App() {
   const [name, setName] = useState("");
   const [conversationId, setConversationId] = useState("");
   const [showChat, setShowChat] = useState(false);
-  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(true); // Default to true
   const audioRef = useRef(null);
 
   const [messages, setMessages] = useState([
@@ -49,6 +49,13 @@ function App() {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [messages]);
+
+  // Pause audio playback when voiceEnabled is toggled off
+  useEffect(() => {
+    if (!voiceEnabled && audioRef.current && !audioRef.current.paused) {
+      audioRef.current.pause();
+    }
+  }, [voiceEnabled]);
 
   const handleInitSession = () => {
     const newId = uuidv4();
@@ -108,6 +115,20 @@ function App() {
     if (e.key === "Enter") {
       e.preventDefault();
       handleSendMessage(e);
+    }
+  };
+
+  const handleAudioToggle = (audioUrl) => {
+    if (!audioRef.current.src || audioRef.current.src !== audioUrl) {
+      // Load and start playing if not already loaded
+      audioRef.current.src = audioUrl;
+      audioRef.current.play();
+    } else if (audioRef.current.paused) {
+      // Resume playback
+      audioRef.current.play();
+    } else {
+      // Pause playback
+      audioRef.current.pause();
     }
   };
 
@@ -234,25 +255,18 @@ function App() {
                         gap: 1,
                       }}
                     >
-                      {/* Show text for user messages */}
                       {isUser && msg.text}
 
-                      {/* Show text or audio playback for bot messages */}
                       {!isUser && (
                         <>
-                          {voiceEnabled ? (
-                            msg.audio && (
-                              <IconButton
-                                size="small"
-                                onClick={() => {
-                                  audioRef.current.src = msg.audio;
-                                  audioRef.current.play();
-                                }}
-                                sx={{ color: isUser ? '#fff' : '#000' }}
-                              >
-                                <VolumeUpIcon />
-                              </IconButton>
-                            )
+                          {voiceEnabled && msg.audio ? (
+                            <IconButton
+                              size="small"
+                              onClick={() => handleAudioToggle(msg.audio)}
+                              sx={{ color: isUser ? '#fff' : '#000' }}
+                            >
+                              <VolumeUpIcon />
+                            </IconButton>
                           ) : (
                             msg.text
                           )}
