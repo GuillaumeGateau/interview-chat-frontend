@@ -18,6 +18,7 @@
     gap: 1rem;
     margin-top: 1rem;
   }
+
   
   /* The chat card, mimicking a phone screen size */
   .chatCard {
@@ -50,7 +51,6 @@
     font-size: 0.95rem;
     font-family: 'museo-sans', sans-serif;
     word-wrap: break-word;
-    font-family: 'museo-sans', sans-serif;
   }
   
   /* Blue bubble on the right for user messages */

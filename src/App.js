@@ -16,9 +16,6 @@ import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import { v4 as uuidv4 } from 'uuid';
 import InitialPreferences from './initial-preferences';
 import './App.css';
-import { ThemeProvider } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
-import theme from './theme';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:5000";
 
@@ -236,8 +233,6 @@ function App() {
   }, [messages, voiceEnabled, handleAudioToggle]);
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
         <Container
           disableGutters
           sx={{
@@ -332,6 +327,11 @@ function App() {
                       backgroundColor: '#fdfdfd',
                       display: 'flex',
                       flexDirection: 'column',
+                      '&::-webkit-scrollbar': {
+                        display: 'none'  // Safari and Chrome
+                      },
+                      scrollbarWidth: 'none',  // Firefox
+                      msOverflowStyle: 'none'  // IE and Edge
                     }}
                   >
                     {MemoizedMessageBox}
@@ -368,7 +368,6 @@ function App() {
           </Box>
           <audio ref={audioRef} style={{ display: 'none' }} />
         </Container>
-    </ThemeProvider>
   );
 }
 

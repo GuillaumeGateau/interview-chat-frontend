@@ -47,7 +47,7 @@ function InitialPreferences({ onSessionStart }) {
 
 // Add the form wrapper and onSubmit handler
   return (
-    <Card sx={{ flexShrink: 0, mb: 2 }}>
+    <Card sx={{ flexShrink: 0, mb: 1,  borderBottomLeftRadius: 0, borderBottomRightRadius: 0, boxShadow: '0 1px 1px rgba(0, 0, 0, 0.1)' }}>
       <CardContent>
         <form onSubmit={(e) => {
           e.preventDefault();
