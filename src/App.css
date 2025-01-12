@@ -1,9 +1,9 @@
-/* The entire app is centered and has a max width like a phone or small tablet */
+/* App.css : The entire app is centered and has a max width like a phone or small tablet */
 .appContainer {
     max-width: 400px;
     margin: 40px auto;
     padding: 0 1rem;
-    font-family: sans-serif;
+    font-family: 'museo-sans', sans-serif;
   }
   
   /* A card for the form */
@@ -35,8 +35,8 @@
     overflow-y: auto; /* Ensure scrolling within the chat */
     padding: 1rem;
     background-color: #fefefe;
-    border-radius: 8px;
-    border: 1px solid #ccc;
+    border: none !important;
+    border-color: white !important;
     margin-bottom: 1rem;
   }
   
@@ -48,12 +48,14 @@
     border-radius: 16px;
     line-height: 1.4;
     font-size: 0.95rem;
+    font-family: 'museo-sans', sans-serif;
     word-wrap: break-word;
+    font-family: 'museo-sans', sans-serif;
   }
   
   /* Blue bubble on the right for user messages */
   .userBubble {
-    background-color: #007bff;
+    background-color: #1c6ca1;
     color: #fff;
     align-self: flex-end;
   }
@@ -61,7 +63,7 @@
   /* Gray bubble on the left for bot messages */
   .botBubble {
     background-color: #e0e0e0;
-    color: #000;
+    color: #1c6ca1;
     align-self: flex-start;
   }
   

@@ -1,3 +1,4 @@
+// initial-preferences.js
 import React, { useState, useEffect } from 'react';
 import {
   Card,
@@ -16,7 +17,7 @@ import {
 function InitialPreferences({ onSessionStart }) {
   const [name, setName] = useState("");
   const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const [autoplayEnabled, setAutoplayEnabled] = useState(true);
+  const [autoplayEnabled, setAutoplayEnabled] = useState(false);
 
   // Load initial preferences from localStorage
   useEffect(() => {
@@ -44,56 +45,71 @@ function InitialPreferences({ onSessionStart }) {
     });
   };
 
+// Add the form wrapper and onSubmit handler
   return (
     <Card sx={{ flexShrink: 0, mb: 2 }}>
       <CardContent>
-        <Typography variant="h6" gutterBottom>
-          Interview Preferences
-        </Typography>
-        
-        <Stack spacing={2} mt={2}>
-          <TextField
-            label="Name"
-            variant="outlined"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            fullWidth
-          />
-
-          <FormControl component="fieldset" variant="standard">
-            <FormLabel component="legend">Communication Preferences</FormLabel>
-            <FormGroup>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={voiceEnabled}
-                    onChange={(e) => setVoiceEnabled(e.target.checked)}
-                  />
+        <form onSubmit={(e) => {
+          e.preventDefault();
+          if (name.trim()) {
+            handleInitSession();
+          }
+        }}>
+          <Typography variant="h6" gutterBottom>
+            What's your name?
+          </Typography>
+          
+          <Stack spacing={2} mt={2}>
+            <TextField
+              label="Name"
+              variant="outlined"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && name.trim()) {
+                  e.preventDefault();
+                  handleInitSession();
                 }
-                label="Voice Response"
-              />
-              {voiceEnabled && (
+              }}
+              fullWidth
+            />
+
+            <FormControl component="fieldset" variant="standard">
+              <FormLabel component="legend">Communication Preferences</FormLabel>
+              <FormGroup>
                 <FormControlLabel
                   control={
                     <Switch
-                      checked={autoplayEnabled}
-                      onChange={(e) => setAutoplayEnabled(e.target.checked)}
+                      checked={voiceEnabled}
+                      onChange={(e) => setVoiceEnabled(e.target.checked)}
                     />
                   }
-                  label="Auto-Play Voice Responses"
+                  label="Voice Response"
                 />
-              )}
-            </FormGroup>
-          </FormControl>
+                {voiceEnabled && (
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={autoplayEnabled}
+                        onChange={(e) => setAutoplayEnabled(e.target.checked)}
+                      />
+                    }
+                    label="Auto-Play Voice Responses"
+                  />
+                )}
+              </FormGroup>
+            </FormControl>
 
-          <Button 
-            variant="contained" 
-            onClick={handleInitSession}
-            disabled={!name.trim()}
-          >
-            Start Interviewing
-          </Button>
-        </Stack>
+            <Button 
+              type="submit"
+              variant="contained" 
+              disabled={!name.trim()}
+              fontColor="#1c6ca1"
+            >
+              Start Interviewing
+            </Button>
+          </Stack>
+        </form>
       </CardContent>
     </Card>
   );
