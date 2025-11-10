@@ -9,10 +9,19 @@ import ChatInput from './components/ChatInput';
 import { theme } from './theme';
 import './App.css';
 
-// Use localhost:5001 in development, production URL in production
-const BACKEND_URL = process.env.NODE_ENV === 'development' 
-  ? (process.env.REACT_APP_BACKEND_URL || "http://localhost:5001")
-  : (process.env.REACT_APP_BACKEND_URL || "http://localhost:5001");
+// Backend URL configuration:
+// - REACT_APP_BACKEND_URL environment variable takes priority (set in production)
+// - Development fallback: http://localhost:5001 (when REACT_APP_BACKEND_URL is not set)
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || (
+  process.env.NODE_ENV === 'development' 
+    ? "http://localhost:5001"
+    : "http://localhost:5001" // Fallback (should not be used in production as REACT_APP_BACKEND_URL should be set)
+);
+
+// Log backend URL in development for debugging (removed in production build)
+if (process.env.NODE_ENV === 'development') {
+  console.log('Backend URL:', BACKEND_URL);
+}
 
 function App() {
   // eslint-disable-next-line no-unused-vars
