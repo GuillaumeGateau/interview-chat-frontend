@@ -10,16 +10,31 @@ function AudioOrb({ audioUrl, isPlaying, onToggle, audioElementRef, isThinking =
   const dataArrayRef = useRef(null);
   const sourceRef = useRef(null);
   const pulseRef = useRef(0);
+  const isInitializedRef = useRef(false);
 
-  // Initialize audio analyser
+  // Expose resume function on audio element for external use
   useEffect(() => {
-    if (!audioUrl || !audioElementRef?.current) return;
+    if (audioElementRef?.current && audioContextRef.current) {
+      audioElementRef.current.resumeAudioContext = async () => {
+        if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+          await audioContextRef.current.resume();
+        }
+      };
+    }
+  }, [audioElementRef, audioContextRef.current]);
+
+  // Initialize audio analyser - set up once when audio element is available
+  useEffect(() => {
+    if (!audioElementRef?.current) {
+      isInitializedRef.current = false;
+      return;
+    }
 
     const audio = audioElementRef.current;
-    if (audio.src !== audioUrl && audio.src) return;
-
+    
     const initAudio = async () => {
       try {
+        // Create or reuse AudioContext
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         let audioContext = audioContextRef.current;
         
@@ -28,62 +43,83 @@ function AudioOrb({ audioUrl, isPlaying, onToggle, audioElementRef, isThinking =
           audioContextRef.current = audioContext;
         }
 
+        // Resume if suspended (required for autoplay)
         if (audioContext.state === 'suspended') {
           await audioContext.resume();
         }
 
-        if (sourceRef.current) {
+        // Create analyser with optimal settings for visualization
+        // Only create if we don't have one yet
+        if (!analyserRef.current) {
+          const analyser = audioContext.createAnalyser();
+          analyser.fftSize = 256; // Good balance between detail and performance
+          analyser.smoothingTimeConstant = 0.7; // Slightly less smoothing for more responsive visualization
+          analyserRef.current = analyser;
+
+          // Create data array for frequency data
+          const bufferLength = analyser.frequencyBinCount;
+          dataArrayRef.current = new Uint8Array(bufferLength);
+        }
+
+        // Connect audio element to analyser (only once per audio element)
+        // An audio element can only have one MediaElementSource
+        // IMPORTANT: Once connected, audio MUST play through Web Audio API
+        if (!sourceRef.current && !audio.__audioSource) {
           try {
-            sourceRef.current.disconnect();
-          } catch (e) {}
+            const source = audioContext.createMediaElementSource(audio);
+            // Connect: source -> analyser -> destination
+            // This allows us to analyze AND hear the audio
+            source.connect(analyserRef.current);
+            analyserRef.current.connect(audioContext.destination);
+            sourceRef.current = source;
+            audio.__audioSource = source; // Mark as connected to prevent reconnection
+            
+            // Ensure audio context is running
+            if (audioContext.state === 'suspended') {
+              await audioContext.resume();
+            }
+          } catch (error) {
+            console.error('Error connecting audio source:', error);
+            // Audio element already connected - reuse existing connection
+            if (audio.__audioSource) {
+              sourceRef.current = audio.__audioSource;
+            }
+          }
+        } else if (audio.__audioSource) {
+          // Reuse existing connection
+          sourceRef.current = audio.__audioSource;
+          
+          // Ensure audio context is running
+          if (audioContext.state === 'suspended') {
+            await audioContext.resume();
+          }
         }
 
-        const analyser = audioContext.createAnalyser();
-        analyser.fftSize = 256;
-        analyser.smoothingTimeConstant = 0.8;
-        analyserRef.current = analyser;
-
-        try {
-          const source = audioContext.createMediaElementSource(audio);
-          source.connect(analyser);
-          analyser.connect(audioContext.destination);
-          sourceRef.current = source;
-        } catch (error) {
-          console.log('Audio element already connected');
-        }
-
-        const bufferLength = analyser.frequencyBinCount;
-        dataArrayRef.current = new Uint8Array(bufferLength);
-
-        if (!audio.src || audio.src !== audioUrl) {
-          audio.src = audioUrl;
-          audio.load();
-        }
+        isInitializedRef.current = true;
       } catch (error) {
-        console.error('Error initializing audio:', error);
+        console.error('Error initializing audio analyser:', error);
+        isInitializedRef.current = false;
       }
     };
 
+    // Initialize when audio element is ready
     initAudio();
 
     return () => {
-      if (sourceRef.current) {
-        try {
-          sourceRef.current.disconnect();
-        } catch (e) {}
-        sourceRef.current = null;
-      }
+      // Don't disconnect - we want to keep the connection for reuse
     };
-  }, [audioUrl, audioElementRef]);
+  }, [audioElementRef]);
 
-  // Draw waveform
+  // Main animation loop - this is the critical part
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
+    let animationId = null;
 
     const draw = (timestamp = 0) => {
+      // Always clear the canvas first
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       const centerX = canvas.width / 2;
@@ -113,111 +149,110 @@ function AudioOrb({ audioUrl, isPlaying, onToggle, audioElementRef, isThinking =
         ctx.textBaseline = 'middle';
         ctx.fillText(thinkingText, centerX, centerY);
         
-        animationFrameRef.current = requestAnimationFrame(draw);
+        // Continue animation
+        animationId = requestAnimationFrame(draw);
         return;
       }
 
-      // Draw circle background (no background color - transparent)
+      // Draw circle background
       ctx.beginPath();
       ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
       ctx.fillStyle = theme.colors.primary;
       ctx.fill();
 
-      // Draw waveform bars in center - real-time visualization with centered effect
+      // Waveform visualization
       const barCount = 6;
       const totalBarWidth = radius * 0.5;
       const barWidth = totalBarWidth / barCount;
       const spacing = barWidth * 0.8;
-      
-      // Center bars should be close to max height (with padding)
-      const maxCenterBarHeight = radius * 0.75; // Center bars can be up to 75% of radius
-      const padding = radius * 0.1; // 10% padding from edge
+      const padding = radius * 0.1;
       const centerMaxHeight = radius - padding; // Maximum height for center bars
-      
-      // Check refs directly in the draw function
+
+      // Get analyser and data array
       const analyser = analyserRef.current;
       const dataArray = dataArrayRef.current;
-      
-      if (isPlaying && analyser && dataArray) {
+
+      // Draw waveform if playing and analyser is ready
+      if (isPlaying && isInitializedRef.current && analyser && dataArray) {
+        // Get fresh frequency data
         analyser.getByteFrequencyData(dataArray);
+
+        // Verify we have valid data (not all zeros)
+        const hasData = dataArray.some(value => value > 0);
         
-        // Map frequencies so center bars are most reactive (real-time)
-        // Center bars (2, 3) get mid-range frequencies (most prominent)
-        // Outer bars (0, 1, 4, 5) get lower/higher frequencies (less reactive)
-        const centerFrequencyIndex = Math.floor(dataArray.length * 0.35); // Mid-range frequencies (most prominent)
-        const frequencyRange = Math.floor(dataArray.length * 0.4); // Range to sample from
-        
-        // Get center bar audio value for reference
-        const centerValue = dataArray[centerFrequencyIndex] / 255;
-        
-        for (let i = 0; i < barCount; i++) {
-          // Calculate distance from center (0 = center, 2.5 = edge)
-          const distanceFromCenter = Math.abs(i - (barCount - 1) / 2);
-          const isCenterBar = distanceFromCenter <= 0.5; // Bars 2 and 3 are center bars
-          
-          // Map bars to frequencies: center bars get center frequencies (most reactive)
-          // Create a symmetric mapping around the center frequency
-          const normalizedPosition = (i - (barCount - 1) / 2) / ((barCount - 1) / 2); // -1 to 1
-          const frequencyOffset = Math.floor(normalizedPosition * frequencyRange / 2);
-          let frequencyIndex = centerFrequencyIndex + frequencyOffset;
-          
-          // Clamp to valid range
-          frequencyIndex = Math.max(0, Math.min(dataArray.length - 1, frequencyIndex));
-          
-          const normalizedValue = dataArray[frequencyIndex] / 255;
-          
-          let finalHeight;
-          if (isCenterBar) {
-            // Center bars: always close to max height, with dynamic variation
-            // Base height is 85% of max, plus up to 15% based on audio
-            const baseHeight = centerMaxHeight * 0.85;
-            const dynamicHeight = centerMaxHeight * 0.15 * normalizedValue;
-            finalHeight = baseHeight + dynamicHeight;
-          } else {
-            // Outer bars: relative to center bars, scaled by distance
-            // They should be 30-60% of center bar height
-            const centerBarHeight = centerMaxHeight * 0.85 + centerMaxHeight * 0.15 * centerValue;
-            const distanceFactor = 1 - (distanceFromCenter / ((barCount - 1) / 2)) * 0.5; // 0.5 to 1.0
-            const outerMaxHeight = centerBarHeight * (0.3 + distanceFactor * 0.3); // 30-60% of center
-            finalHeight = normalizedValue * outerMaxHeight;
-            // Ensure minimum height for visibility
-            const minHeight = centerMaxHeight * 0.15;
-            finalHeight = Math.max(finalHeight, minHeight);
+        if (hasData) {
+          // Map frequencies for centered visualization
+          const centerFrequencyIndex = Math.floor(dataArray.length * 0.35);
+          const frequencyRange = Math.floor(dataArray.length * 0.4);
+          const centerValue = dataArray[centerFrequencyIndex] / 255;
+
+          for (let i = 0; i < barCount; i++) {
+            const distanceFromCenter = Math.abs(i - (barCount - 1) / 2);
+            const isCenterBar = distanceFromCenter <= 0.5;
+
+            // Map bars to frequencies symmetrically around center
+            const normalizedPosition = (i - (barCount - 1) / 2) / ((barCount - 1) / 2);
+            const frequencyOffset = Math.floor(normalizedPosition * frequencyRange / 2);
+            let frequencyIndex = centerFrequencyIndex + frequencyOffset;
+            frequencyIndex = Math.max(0, Math.min(dataArray.length - 1, frequencyIndex));
+
+            const normalizedValue = dataArray[frequencyIndex] / 255;
+
+            let finalHeight;
+            if (isCenterBar) {
+              // Center bars: 85-100% of max height for dramatic effect
+              const baseHeight = centerMaxHeight * 0.85;
+              const dynamicHeight = centerMaxHeight * 0.15 * normalizedValue;
+              finalHeight = baseHeight + dynamicHeight;
+            } else {
+              // Outer bars: 30-60% of center bar height, relative to distance
+              const centerBarHeight = centerMaxHeight * 0.85 + centerMaxHeight * 0.15 * centerValue;
+              const distanceFactor = 1 - (distanceFromCenter / ((barCount - 1) / 2)) * 0.5;
+              const outerMaxHeight = centerBarHeight * (0.3 + distanceFactor * 0.3);
+              finalHeight = normalizedValue * outerMaxHeight;
+              const minHeight = centerMaxHeight * 0.15;
+              finalHeight = Math.max(finalHeight, minHeight);
+            }
+
+            // Calculate bar position (centered)
+            const totalWidth = (barCount - 1) * (barWidth + spacing) + barWidth;
+            const startX = centerX - totalWidth / 2;
+            const x = startX + i * (barWidth + spacing) + barWidth / 2;
+            const y = centerY;
+
+            // Draw rounded rectangle bar
+            const cornerRadius = barWidth * 0.3;
+            ctx.fillStyle = 'white';
+            roundRect(ctx, x - barWidth / 2, y - finalHeight / 2, barWidth, finalHeight, cornerRadius);
+            ctx.fill();
           }
-          
-          // Center the bars horizontally - ensure perfect centering
-          const totalWidth = (barCount - 1) * (barWidth + spacing) + barWidth;
-          const startX = centerX - totalWidth / 2;
-          const x = startX + i * (barWidth + spacing) + barWidth / 2;
-          const y = centerY;
-          
-          // Draw rounded rectangle
-          const cornerRadius = barWidth * 0.3;
-          ctx.fillStyle = 'white';
-          roundRect(ctx, x - barWidth / 2, y - finalHeight / 2, barWidth, finalHeight, cornerRadius);
-          ctx.fill();
+        } else {
+          // No data yet - draw static bars
+          drawStaticBars(ctx, centerX, centerY, barCount, barWidth, spacing, radius * 0.15);
         }
       } else {
-        // Static bars when not playing
-        const staticHeight = radius * 0.15;
-        
-        for (let i = 0; i < barCount; i++) {
-          const totalWidth = (barCount - 1) * (barWidth + spacing) + barWidth;
-          const startX = centerX - totalWidth / 2;
-          const x = startX + i * (barWidth + spacing) + barWidth / 2;
-          const y = centerY;
-          
-          // Draw rounded rectangle
-          const cornerRadius = barWidth * 0.3;
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-          roundRect(ctx, x - barWidth / 2, y - staticHeight / 2, barWidth, staticHeight, cornerRadius);
-          ctx.fill();
-        }
+        // Not playing or not initialized - draw static bars
+        drawStaticBars(ctx, centerX, centerY, barCount, barWidth, spacing, radius * 0.15);
       }
 
-      // Always continue animation if playing or thinking
+      // Continue animation loop if playing or thinking
       if (isPlaying || isThinking) {
-        animationFrameRef.current = requestAnimationFrame(draw);
+        animationId = requestAnimationFrame(draw);
+      }
+    };
+
+    // Helper function to draw static bars
+    const drawStaticBars = (ctx, centerX, centerY, barCount, barWidth, spacing, staticHeight) => {
+      const totalWidth = (barCount - 1) * (barWidth + spacing) + barWidth;
+      const startX = centerX - totalWidth / 2;
+
+      for (let i = 0; i < barCount; i++) {
+        const x = startX + i * (barWidth + spacing) + barWidth / 2;
+        const y = centerY;
+        const cornerRadius = barWidth * 0.3;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        roundRect(ctx, x - barWidth / 2, y - staticHeight / 2, barWidth, staticHeight, cornerRadius);
+        ctx.fill();
       }
     };
 
@@ -236,14 +271,16 @@ function AudioOrb({ audioUrl, isPlaying, onToggle, audioElementRef, isThinking =
       ctx.closePath();
     };
 
-    // Start animation loop - always draw at least once, then continue if playing/thinking
+    // Start animation loop
+    // Always start the loop - it will continue if playing/thinking
     draw();
 
+    // Cleanup
     return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
+      if (animationId) {
+        cancelAnimationFrame(animationId);
       }
+      animationFrameRef.current = null;
     };
   }, [isPlaying, isThinking, audioUrl, language]);
 

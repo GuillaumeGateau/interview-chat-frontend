@@ -275,6 +275,15 @@ function App() {
                 audioRef.current.pause();
               }
               
+              // Ensure audio context is resumed (required for Web Audio API playback)
+              if (audioRef.current.resumeAudioContext) {
+                try {
+                  await audioRef.current.resumeAudioContext();
+                } catch (e) {
+                  console.error('Error resuming audio context:', e);
+                }
+              }
+              
               // Wait for audio to be ready
               audioRef.current.src = audioUrl;
               audioRef.current.load();
@@ -398,7 +407,7 @@ function App() {
     }
   }, [handleSendMessage]);
 
-  const handleAudioToggle = useCallback((audioUrl) => {
+  const handleAudioToggle = useCallback(async (audioUrl) => {
     if (!audioRef.current) return;
 
     if (audioRef.current.src === audioUrl && !audioRef.current.paused) {
@@ -410,11 +419,35 @@ function App() {
       audioRef.current.pause();
     }
 
+    // Ensure audio context is resumed (required for Web Audio API playback)
+    // This is needed because once we connect to Web Audio API, audio must go through it
+    if (audioRef.current.resumeAudioContext) {
+      try {
+        await audioRef.current.resumeAudioContext();
+      } catch (e) {
+        console.error('Error resuming audio context:', e);
+      }
+    }
+
     audioRef.current.src = audioUrl;
     audioRef.current.load();
-    audioRef.current.play().catch(error => {
-      console.error('Error playing audio:', error);
-    });
+    
+    // Wait for audio to be ready, then play
+    const playAudio = async () => {
+      try {
+        await audioRef.current.play();
+      } catch (error) {
+        console.error('Error playing audio:', error);
+      }
+    };
+
+    if (audioRef.current.readyState >= 2) {
+      // Already loaded, play immediately
+      await playAudio();
+    } else {
+      // Wait for canplay event
+      audioRef.current.addEventListener('canplay', playAudio, { once: true });
+    }
   }, []);
 
   // Render messages
