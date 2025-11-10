@@ -9,7 +9,10 @@ import ChatInput from './components/ChatInput';
 import { theme } from './theme';
 import './App.css';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:5001";
+// Use localhost:5001 in development, production URL in production
+const BACKEND_URL = process.env.NODE_ENV === 'development' 
+  ? (process.env.REACT_APP_BACKEND_URL || "http://localhost:5001")
+  : (process.env.REACT_APP_BACKEND_URL || "http://localhost:5001");
 
 function App() {
   // eslint-disable-next-line no-unused-vars
@@ -18,9 +21,22 @@ function App() {
   const [showChat, setShowChat] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [autoplayEnabled, setAutoplayEnabled] = useState(true);
+  const [language, setLanguage] = useState('en'); // 'en' or 'fr'
   const audioRef = useRef(null);
   const [currentlyPlayingUrl, setCurrentlyPlayingUrl] = useState(null);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+
+  // Load language preference from localStorage on mount (default to 'en')
+  useEffect(() => {
+    // Always default to English on initial load
+    // User can change it via the toggle, which will save the preference
+    setLanguage('en');
+    // Only set localStorage if it doesn't exist or is invalid
+    const savedLanguage = localStorage.getItem('languagePreference');
+    if (savedLanguage !== 'en' && savedLanguage !== 'fr') {
+      localStorage.setItem('languagePreference', 'en');
+    }
+  }, []);
 
   const [messages, setMessages] = useState([
     {
@@ -32,6 +48,11 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const chatContainerRef = useRef(null);
   const audioUrlsRef = useRef(new Set());
+  const requestTimestampsRef = useRef([]);
+  
+  // Client-side rate limiting: max 10 requests per minute
+  const RATE_LIMIT_MAX_REQUESTS = 10;
+  const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
 
   // Prevent body scroll
   useEffect(() => {
@@ -99,19 +120,29 @@ function App() {
   }, []);
 
   const handleInitSession = useCallback((preferences) => {
-    const { name, voiceEnabled, autoplayEnabled } = preferences;
+    const { name, voiceEnabled, autoplayEnabled, language: prefLanguage } = preferences;
     
     setName(name);
     setVoiceEnabled(voiceEnabled);
     setAutoplayEnabled(autoplayEnabled);
+    // Ensure language defaults to 'en' if not provided or invalid
+    const validLanguage = (prefLanguage === 'en' || prefLanguage === 'fr') ? prefLanguage : 'en';
+    setLanguage(validLanguage);
+    
+    // Save language preference (always save, defaulting to 'en')
+    localStorage.setItem('languagePreference', validLanguage);
     
     const newId = uuidv4();
     setConversationId(newId);
     setShowChat(true);
 
+    const welcomeMessage = prefLanguage === 'fr' 
+      ? `Bonjour ${name}, je suis l'intervieweur virtuel IA de William. Posez-moi n'importe quelle question sur mon expérience ou mon approche du produit. Je ferai de mon mieux pour répondre !`
+      : `Hi ${name}, I'm William's virtual AI interviewer. Ask me any question about my experience or approach to product. I'll do my best to answer!`;
+
     setMessages([{
       sender: 'bot',
-      text: `Hi ${name}, I'm William's virtual AI interviewer. Ask me any question about my experience or approach to product. I'll do my best to answer!`,
+      text: welcomeMessage,
     }]);
 
     // Request sound permissions
@@ -125,6 +156,34 @@ function App() {
     e?.preventDefault();
     if (!userMessage.trim() || isLoading) return;
 
+    // Client-side rate limiting check
+    const now = Date.now();
+    const timestamps = requestTimestampsRef.current;
+    
+    // Remove timestamps older than the rate limit window
+    requestTimestampsRef.current = timestamps.filter(
+      timestamp => now - timestamp < RATE_LIMIT_WINDOW_MS
+    );
+    
+    // Check if rate limit exceeded
+    if (requestTimestampsRef.current.length >= RATE_LIMIT_MAX_REQUESTS) {
+      const rateLimitMessage = language === 'fr' 
+        ? "Vous envoyez des messages trop rapidement. Veuillez attendre un moment avant de réessayer."
+        : "You're sending messages too quickly. Please wait a moment before trying again.";
+      setMessages(prev => [
+        ...prev,
+        {
+          sender: 'bot',
+          text: rateLimitMessage,
+          audio: null,
+        },
+      ]);
+      return;
+    }
+    
+    // Add current timestamp
+    requestTimestampsRef.current.push(now);
+
     const userMessageCopy = userMessage;
     setUserMessage("");
     setIsLoading(true);
@@ -135,28 +194,41 @@ function App() {
       setConversationId(tempConversationId);
     }
 
+    const thinkingMessage = language === 'fr' 
+      ? "Laissez-moi réfléchir à cela un instant..."
+      : "Let me think about that for a moment...";
+    
     setMessages(prev => [
       ...prev, 
       { sender: 'user', text: userMessageCopy },
-      { sender: 'bot', thinking: true, text: "Let me think about that for a moment..." }
+      { sender: 'bot', thinking: true, text: thinkingMessage }
     ]);
 
     try {
       const endpoint = voiceEnabled ? '/api/v1/chat-voice' : '/api/v1/chat';
       const response = await fetch(`${BACKEND_URL}${endpoint}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "X-Client-Version": "1.0.0", // Can be used by backend for validation
+        },
         body: JSON.stringify({
           conversationId: tempConversationId,
           message: userMessageCopy,
+          language: language, // Include language in API request
         }),
       });
 
       if (voiceEnabled) {
         // Check if response is OK
         if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Server error: ${response.status} - ${errorText}`);
+          try {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Server error: ${response.status}`);
+          } catch (parseError) {
+            const errorText = await response.text();
+            throw new Error(`Server error: ${response.status} - ${errorText}`);
+          }
         }
         
         // Check content type
@@ -245,6 +317,17 @@ function App() {
           }, 100);
         }
       } else {
+        // Check if response is OK for text chat
+        if (!response.ok) {
+          try {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Server error: ${response.status}`);
+          } catch (parseError) {
+            const errorText = await response.text();
+            throw new Error(`Server error: ${response.status} - ${errorText}`);
+          }
+        }
+        
         const data = await response.json();
         if (data.conversationId && !conversationId) {
           setConversationId(data.conversationId);
@@ -257,11 +340,34 @@ function App() {
       }
     } catch (error) {
       console.error("Error:", error);
-      const errorMessage = error.message?.includes('Failed to fetch') 
-        ? "Unable to connect to the server. Please check your connection and try again."
+      const errorMessages = {
+        en: {
+          fetch: "Unable to connect to the server. Please check your connection and try again.",
+          server: "The server encountered an error. Please try again in a moment.",
+          default: "Sorry, something went wrong. Please try again.",
+          inappropriate: "Your message contains inappropriate content and cannot be processed.",
+          language: "The selected language is not supported.",
+        },
+        fr: {
+          fetch: "Impossible de se connecter au serveur. Veuillez vérifier votre connexion et réessayer.",
+          server: "Le serveur a rencontré une erreur. Veuillez réessayer dans un instant.",
+          default: "Désolé, une erreur s'est produite. Veuillez réessayer.",
+          inappropriate: "Votre message contient du contenu inapproprié et ne peut pas être traité.",
+          language: "La langue sélectionnée n'est pas prise en charge.",
+        }
+      };
+      
+      const errorType = error.message?.includes('Failed to fetch') 
+        ? 'fetch'
         : error.message?.includes('Server error')
-        ? "The server encountered an error. Please try again in a moment."
-        : "Sorry, something went wrong. Please try again.";
+        ? 'server'
+        : error.message?.includes('inappropriate content')
+        ? 'inappropriate'
+        : error.message?.includes('Unsupported language')
+        ? 'language'
+        : 'default';
+      
+      const errorMessage = errorMessages[language]?.[errorType] || errorMessages.en[errorType];
       
       setMessages(prev => [
         ...prev.slice(0, -1),
@@ -274,7 +380,7 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [conversationId, voiceEnabled, autoplayEnabled, userMessage, isLoading]);
+  }, [conversationId, voiceEnabled, autoplayEnabled, userMessage, isLoading, language]);
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === "Enter") {
@@ -317,10 +423,11 @@ function App() {
           isCurrentlyPlaying={isCurrentlyPlaying}
           onAudioToggle={handleAudioToggle}
           audioElementRef={audioRef}
+          language={language}
         />
       );
     });
-  }, [messages, voiceEnabled, handleAudioToggle, currentlyPlayingUrl, isAudioPlaying]);
+  }, [messages, voiceEnabled, handleAudioToggle, currentlyPlayingUrl, isAudioPlaying, language]);
 
   return (
     <Container
@@ -375,8 +482,14 @@ function App() {
               <ChatControls
                 voiceEnabled={voiceEnabled}
                 autoplayEnabled={autoplayEnabled}
+                language={language}
                 onVoiceToggle={() => setVoiceEnabled(!voiceEnabled)}
                 onAutoplayToggle={() => setAutoplayEnabled(!autoplayEnabled)}
+                onLanguageToggle={() => {
+                  const newLanguage = language === 'en' ? 'fr' : 'en';
+                  setLanguage(newLanguage);
+                  localStorage.setItem('languagePreference', newLanguage);
+                }}
               />
 
               <Box
@@ -416,6 +529,7 @@ function App() {
                 onSubmit={handleSendMessage}
                 onKeyDown={handleKeyDown}
                 disabled={isLoading}
+                language={language}
               />
             </CardContent>
           </Card>

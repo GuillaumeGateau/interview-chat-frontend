@@ -1,8 +1,9 @@
 import React from 'react';
 import { Box, Typography } from '@mui/material';
 import { theme } from '../theme';
+import { getTranslation } from '../i18n';
 
-function ChatHeader() {
+function ChatHeader({ language = 'en' }) {
   return (
     <Box
       sx={{
@@ -23,7 +24,7 @@ function ChatHeader() {
           mb: 0.5,
         }}
       >
-        William AI
+        {getTranslation('williamAI', language)}
       </Typography>
       <Typography
         variant="caption"
@@ -34,7 +35,7 @@ function ChatHeader() {
           fontWeight: 400,
         }}
       >
-        Virtual Interviewer
+        {getTranslation('virtualInterviewer', language)}
       </Typography>
     </Box>
   );

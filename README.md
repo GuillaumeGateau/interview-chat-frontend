@@ -14,6 +14,8 @@ Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
 The page will reload when you make changes.\
 You may also see any lint errors in the console.
 
+**Note:** If you see WebSocket connection errors in the console, create a `.env` file in the root directory (copy from `.env.example`) to configure the dev server WebSocket settings.
+
 ### `npm test`
 
 Launches the test runner in the interactive watch mode.\
@@ -68,3 +70,22 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/d
 ### `npm run build` fails to minify
 
 This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+
+## Troubleshooting
+
+### WebSocket Connection Errors
+
+If you see WebSocket connection errors in the console (e.g., `WebSocket connection to 'wss://...' failed`), this is a development-only issue related to React's hot module replacement (HMR). It's harmless but can be fixed by:
+
+1. Create a `.env` file in the root directory (copy from `.env.example`)
+2. Set the WebSocket configuration:
+   ```
+   WDS_SOCKET_HOST=localhost
+   WDS_SOCKET_PORT=3000
+   WDS_SOCKET_PATH=/ws
+   ```
+3. Restart the dev server
+
+Alternatively, you can disable HMR by adding `FAST_REFRESH=false` to your `.env` file (though you'll lose hot reloading).
+
+**Note:** This error only appears in development and does not affect production builds.

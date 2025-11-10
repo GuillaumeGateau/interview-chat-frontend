@@ -3,7 +3,7 @@ import { Box, Typography } from '@mui/material';
 import AudioOrb from './AudioOrb';
 import { theme } from '../theme';
 
-function ChatMessage({ message, isUser, voiceEnabled, isCurrentlyPlaying, onAudioToggle, audioElementRef }) {
+function ChatMessage({ message, isUser, voiceEnabled, isCurrentlyPlaying, onAudioToggle, audioElementRef, language = 'en' }) {
   const isThinking = message.thinking;
   const hasAudio = voiceEnabled && message.audio;
   const showOrb = isThinking || hasAudio;
@@ -59,6 +59,7 @@ function ChatMessage({ message, isUser, voiceEnabled, isCurrentlyPlaying, onAudi
             <AudioOrb
               isThinking={true}
               audioElementRef={audioElementRef}
+              language={language}
             />
           ) : hasAudio ? (
             <AudioOrb
@@ -66,6 +67,7 @@ function ChatMessage({ message, isUser, voiceEnabled, isCurrentlyPlaying, onAudi
               isPlaying={isCurrentlyPlaying}
               onToggle={() => onAudioToggle(message.audio)}
               audioElementRef={audioElementRef}
+              language={language}
             />
           ) : (
             <Typography 

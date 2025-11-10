@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Box } from '@mui/material';
 import { theme } from '../theme';
 
-function AudioOrb({ audioUrl, isPlaying, onToggle, audioElementRef, isThinking = false }) {
+function AudioOrb({ audioUrl, isPlaying, onToggle, audioElementRef, isThinking = false, language = 'en' }) {
   const canvasRef = useRef(null);
   const animationFrameRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -82,8 +82,6 @@ function AudioOrb({ audioUrl, isPlaying, onToggle, audioElementRef, isThinking =
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
-    const analyser = analyserRef.current;
-    const dataArray = dataArrayRef.current;
 
     const draw = (timestamp = 0) => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -107,12 +105,13 @@ function AudioOrb({ audioUrl, isPlaying, onToggle, audioElementRef, isThinking =
         ctx.fill();
         ctx.globalAlpha = 1.0;
 
-        // Draw "Good question..." text
+        // Draw "Good question..." text (localized)
+        const thinkingText = language === 'fr' ? 'Bonne question...' : 'Good question...';
         ctx.fillStyle = 'white';
         ctx.font = 'bold 14px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('Good question...', centerX, centerY);
+        ctx.fillText(thinkingText, centerX, centerY);
         
         animationFrameRef.current = requestAnimationFrame(draw);
         return;
@@ -124,24 +123,72 @@ function AudioOrb({ audioUrl, isPlaying, onToggle, audioElementRef, isThinking =
       ctx.fillStyle = theme.colors.primary;
       ctx.fill();
 
-      // Draw waveform bars in center
+      // Draw waveform bars in center - real-time visualization with centered effect
+      const barCount = 6;
+      const totalBarWidth = radius * 0.5;
+      const barWidth = totalBarWidth / barCount;
+      const spacing = barWidth * 0.8;
+      
+      // Center bars should be close to max height (with padding)
+      const maxCenterBarHeight = radius * 0.75; // Center bars can be up to 75% of radius
+      const padding = radius * 0.1; // 10% padding from edge
+      const centerMaxHeight = radius - padding; // Maximum height for center bars
+      
+      // Check refs directly in the draw function
+      const analyser = analyserRef.current;
+      const dataArray = dataArrayRef.current;
+      
       if (isPlaying && analyser && dataArray) {
         analyser.getByteFrequencyData(dataArray);
         
-        const barCount = 6;
-        const totalBarWidth = radius * 0.5;
-        const barWidth = totalBarWidth / barCount;
-        const maxBarHeight = radius * 0.4;
-        const spacing = barWidth * 0.8; // Increased spacing
+        // Map frequencies so center bars are most reactive (real-time)
+        // Center bars (2, 3) get mid-range frequencies (most prominent)
+        // Outer bars (0, 1, 4, 5) get lower/higher frequencies (less reactive)
+        const centerFrequencyIndex = Math.floor(dataArray.length * 0.35); // Mid-range frequencies (most prominent)
+        const frequencyRange = Math.floor(dataArray.length * 0.4); // Range to sample from
+        
+        // Get center bar audio value for reference
+        const centerValue = dataArray[centerFrequencyIndex] / 255;
         
         for (let i = 0; i < barCount; i++) {
-          const dataIndex = Math.floor((i / barCount) * dataArray.length);
-          const normalizedValue = dataArray[dataIndex] / 255;
-          const barHeight = normalizedValue * maxBarHeight;
-          const minHeight = maxBarHeight * 0.2;
-          const finalHeight = Math.max(barHeight, minHeight);
+          // Calculate distance from center (0 = center, 2.5 = edge)
+          const distanceFromCenter = Math.abs(i - (barCount - 1) / 2);
+          const isCenterBar = distanceFromCenter <= 0.5; // Bars 2 and 3 are center bars
           
-          const x = centerX - (barCount * (barWidth + spacing)) / 2 + i * (barWidth + spacing) + barWidth / 2;
+          // Map bars to frequencies: center bars get center frequencies (most reactive)
+          // Create a symmetric mapping around the center frequency
+          const normalizedPosition = (i - (barCount - 1) / 2) / ((barCount - 1) / 2); // -1 to 1
+          const frequencyOffset = Math.floor(normalizedPosition * frequencyRange / 2);
+          let frequencyIndex = centerFrequencyIndex + frequencyOffset;
+          
+          // Clamp to valid range
+          frequencyIndex = Math.max(0, Math.min(dataArray.length - 1, frequencyIndex));
+          
+          const normalizedValue = dataArray[frequencyIndex] / 255;
+          
+          let finalHeight;
+          if (isCenterBar) {
+            // Center bars: always close to max height, with dynamic variation
+            // Base height is 85% of max, plus up to 15% based on audio
+            const baseHeight = centerMaxHeight * 0.85;
+            const dynamicHeight = centerMaxHeight * 0.15 * normalizedValue;
+            finalHeight = baseHeight + dynamicHeight;
+          } else {
+            // Outer bars: relative to center bars, scaled by distance
+            // They should be 30-60% of center bar height
+            const centerBarHeight = centerMaxHeight * 0.85 + centerMaxHeight * 0.15 * centerValue;
+            const distanceFactor = 1 - (distanceFromCenter / ((barCount - 1) / 2)) * 0.5; // 0.5 to 1.0
+            const outerMaxHeight = centerBarHeight * (0.3 + distanceFactor * 0.3); // 30-60% of center
+            finalHeight = normalizedValue * outerMaxHeight;
+            // Ensure minimum height for visibility
+            const minHeight = centerMaxHeight * 0.15;
+            finalHeight = Math.max(finalHeight, minHeight);
+          }
+          
+          // Center the bars horizontally - ensure perfect centering
+          const totalWidth = (barCount - 1) * (barWidth + spacing) + barWidth;
+          const startX = centerX - totalWidth / 2;
+          const x = startX + i * (barWidth + spacing) + barWidth / 2;
           const y = centerY;
           
           // Draw rounded rectangle
@@ -152,14 +199,12 @@ function AudioOrb({ audioUrl, isPlaying, onToggle, audioElementRef, isThinking =
         }
       } else {
         // Static bars when not playing
-        const barCount = 6;
-        const totalBarWidth = radius * 0.5;
-        const barWidth = totalBarWidth / barCount;
         const staticHeight = radius * 0.15;
-        const spacing = barWidth * 0.8; // Increased spacing
         
         for (let i = 0; i < barCount; i++) {
-          const x = centerX - (barCount * (barWidth + spacing)) / 2 + i * (barWidth + spacing) + barWidth / 2;
+          const totalWidth = (barCount - 1) * (barWidth + spacing) + barWidth;
+          const startX = centerX - totalWidth / 2;
+          const x = startX + i * (barWidth + spacing) + barWidth / 2;
           const y = centerY;
           
           // Draw rounded rectangle
@@ -170,6 +215,7 @@ function AudioOrb({ audioUrl, isPlaying, onToggle, audioElementRef, isThinking =
         }
       }
 
+      // Always continue animation if playing or thinking
       if (isPlaying || isThinking) {
         animationFrameRef.current = requestAnimationFrame(draw);
       }
@@ -190,14 +236,16 @@ function AudioOrb({ audioUrl, isPlaying, onToggle, audioElementRef, isThinking =
       ctx.closePath();
     };
 
+    // Start animation loop - always draw at least once, then continue if playing/thinking
     draw();
 
     return () => {
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
       }
     };
-  }, [isPlaying, isThinking, audioUrl]);
+  }, [isPlaying, isThinking, audioUrl, language]);
 
   const handleClick = (e) => {
     e.stopPropagation();

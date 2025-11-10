@@ -2,8 +2,9 @@ import React from 'react';
 import { Box, TextField, IconButton } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import { theme } from '../theme';
+import { getTranslation } from '../i18n';
 
-function ChatInput({ value, onChange, onSubmit, onKeyDown, disabled }) {
+function ChatInput({ value, onChange, onSubmit, onKeyDown, disabled, language = 'en' }) {
   return (
     <Box
       component="form"
@@ -19,7 +20,7 @@ function ChatInput({ value, onChange, onSubmit, onKeyDown, disabled }) {
       }}
     >
       <TextField
-        placeholder="Type your question..."
+        placeholder={getTranslation('typeQuestion', language)}
         sx={{
           fontFamily: '"museo-sans", sans-serif',
           '& .MuiOutlinedInput-root': {
