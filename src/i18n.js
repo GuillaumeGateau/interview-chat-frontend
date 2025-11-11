@@ -17,6 +17,14 @@ export const translations = {
     french: "Français",
     rateLimitMessage: "You're sending messages too quickly. Please wait a moment before trying again.",
     rateLimitMessageFr: "Vous envoyez des messages trop rapidement. Veuillez attendre un moment avant de réessayer.",
+    streamConnecting: "Preparing stream...",
+    streamBuffering: "Streaming...",
+    streamPlaying: "Playing",
+    streamComplete: "Stream complete",
+    streamError: "Stream interrupted. Tap to retry.",
+    streamTapToPlay: "Ready. Tap to play.",
+    streamFallback: "Streaming unavailable. Switching to classic audio...",
+    streamUnsupported: "Streaming is not supported in this browser.",
   },
   fr: {
     welcome: "Bienvenue ! C'est parti !",
@@ -35,6 +43,14 @@ export const translations = {
     french: "Français",
     rateLimitMessage: "Vous envoyez des messages trop rapidement. Veuillez attendre un moment avant de réessayer.",
     rateLimitMessageFr: "Vous envoyez des messages trop rapidement. Veuillez attendre un moment avant de réessayer.",
+    streamConnecting: "Préparation du flux...",
+    streamBuffering: "Diffusion...",
+    streamPlaying: "Lecture en cours",
+    streamComplete: "Flux terminé",
+    streamError: "Flux interrompu. Touchez pour réessayer.",
+    streamTapToPlay: "Prêt. Touchez pour lancer.",
+    streamFallback: "Diffusion indisponible. Passage au mode classique...",
+    streamUnsupported: "La diffusion n'est pas prise en charge sur ce navigateur.",
   }
 };
 

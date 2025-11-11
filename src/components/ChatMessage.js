@@ -7,6 +7,7 @@ function ChatMessage({ message, isUser, voiceEnabled, isCurrentlyPlaying, onAudi
   const isThinking = message.thinking;
   const hasAudio = voiceEnabled && message.audio;
   const showOrb = isThinking || hasAudio;
+  const streamStatusColor = message.streamError ? theme.colors.error : theme.colors.textLight;
 
   return (
     <Box

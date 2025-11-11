@@ -3,15 +3,23 @@ import { Box, Chip, FormControlLabel, Switch, Typography } from '@mui/material';
 import { theme } from '../theme';
 import { getTranslation } from '../i18n';
 
-function ChatControls({ voiceEnabled, autoplayEnabled, language, onVoiceToggle, onAutoplayToggle, onLanguageToggle }) {
+function ChatControls({
+  voiceEnabled,
+  autoplayEnabled,
+  language,
+  onVoiceToggle,
+  onAutoplayToggle,
+  onLanguageToggle,
+}) {
   return (
     <Box
       sx={{
         p: 2,
         display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        gap: 2,
+        flexDirection: { xs: 'column', sm: 'row' },
+        justifyContent: { xs: 'flex-start', sm: 'center' },
+        alignItems: { xs: 'stretch', sm: 'center' },
+        gap: { xs: 1.5, sm: 2 },
         flexWrap: 'wrap',
         borderBottom: `1px solid ${theme.colors.border}`,
         backgroundColor: theme.colors.background,
@@ -20,7 +28,15 @@ function ChatControls({ voiceEnabled, autoplayEnabled, language, onVoiceToggle, 
         },
       }}
     >
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: 2,
+          alignSelf: { xs: 'center', sm: 'auto' },
+        }}
+      >
         <Typography 
           variant="body2" 
           sx={{ 
@@ -71,41 +87,56 @@ function ChatControls({ voiceEnabled, autoplayEnabled, language, onVoiceToggle, 
           {getTranslation('french', language)}
         </Typography>
       </Box>
-      <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'nowrap', alignItems: 'center' }}>
-        <Chip
-          label={getTranslation('voiceResponse', language)}
-          color={voiceEnabled ? 'primary' : 'default'}
-          onClick={onVoiceToggle}
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'row', sm: 'row' },
+          alignItems: 'center',
+          gap: { xs: 2, sm: 3 },
+          width: { xs: '100%', sm: 'auto' },
+          flexWrap: 'wrap',
+          justifyContent: { xs: 'space-between', sm: 'center' },
+        }}
+      >
+        <Box
           sx={{
-            cursor: 'pointer',
-            fontWeight: 600,
-            backgroundColor: voiceEnabled ? theme.colors.primary : theme.colors.border,
-            color: voiceEnabled ? 'white' : theme.colors.textLight,
-            '&:hover': {
-              backgroundColor: voiceEnabled ? theme.colors.primaryDark : theme.colors.textMuted,
-            },
-            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            minWidth: { xs: '45%', sm: 'auto' },
+            gap: 1,
+            minWidth: { xs: '45%', sm: 'auto' },
           }}
-        />
-        {voiceEnabled && (
-          <Chip
-            label={autoplayEnabled ? getTranslation('autoplayOn', language) : getTranslation('autoplayOff', language)}
-            color={autoplayEnabled ? 'primary' : 'default'}
-            variant={autoplayEnabled ? 'filled' : 'outlined'}
-            onClick={onAutoplayToggle}
+        >
+          <Typography
+            variant="body2"
             sx={{
-              cursor: 'pointer',
+              color: voiceEnabled ? theme.colors.text : theme.colors.textLight,
               fontWeight: 600,
-              backgroundColor: autoplayEnabled ? theme.colors.primary : 'transparent',
-              color: autoplayEnabled ? 'white' : theme.colors.primary,
-              borderColor: theme.colors.primary,
-              '&:hover': {
-                backgroundColor: autoplayEnabled ? theme.colors.primaryDark : 'rgba(99, 102, 241, 0.1)',
+              fontFamily: '"museo-sans", sans-serif',
+            }}
+          >
+            {voiceEnabled
+              ? (autoplayEnabled ? getTranslation('autoplayOn', language) : getTranslation('autoplayOff', language))
+              : getTranslation('autoplayOff', language)}
+          </Typography>
+          <Switch
+            checked={autoplayEnabled}
+            onChange={onAutoplayToggle}
+            disabled={!voiceEnabled}
+            sx={{
+              '& .MuiSwitch-switchBase.Mui-checked': {
+                color: '#ffffff',
               },
-              flexShrink: 0,
+              '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                backgroundColor: theme.colors.primary,
+              },
+              '& .MuiSwitch-track': {
+                backgroundColor: theme.colors.border,
+              },
             }}
           />
-        )}
+        </Box>
       </Box>
     </Box>
   );

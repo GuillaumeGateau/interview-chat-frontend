@@ -7,6 +7,7 @@ import ChatControls from './components/ChatControls';
 import ChatMessage from './components/ChatMessage';
 import ChatInput from './components/ChatInput';
 import { theme } from './theme';
+import { getTranslation } from './i18n';
 import './App.css';
 
 // Backend URL configuration:
@@ -128,6 +129,308 @@ function App() {
     };
   }, []);
 
+  const processStreamingResponse = useCallback(async (response) => {
+    if (typeof window === 'undefined' || !('MediaSource' in window)) {
+      throw new Error(getTranslation('streamUnsupported', language));
+    }
+
+    if (!response.ok) {
+      try {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Server error: ${response.status}`);
+      } catch (parseError) {
+        const errorText = await response.text();
+        throw new Error(`Server error: ${response.status} - ${errorText}`);
+      }
+    }
+
+    const conversationHeader =
+      response.headers.get('conversation-id') ||
+      response.headers.get('Conversation-Id');
+
+    if (conversationHeader && conversationHeader !== conversationId) {
+      setConversationId(conversationHeader);
+    }
+
+    if (!response.body || typeof response.body.getReader !== 'function') {
+      throw new Error(getTranslation('streamUnsupported', language));
+    }
+
+    const mediaSource = new MediaSource();
+    const audioUrl = URL.createObjectURL(mediaSource);
+    audioUrlsRef.current.add(audioUrl);
+    const streamingMessageId = uuidv4();
+
+    setMessages(prev => {
+      if (prev.length === 0) {
+        return prev;
+      }
+
+      const updated = [...prev];
+      updated[updated.length - 1] = {
+        sender: 'bot',
+        text: null,
+        audio: audioUrl,
+        streaming: true,
+        streamStatus: getTranslation('streamConnecting', language),
+        streamError: false,
+        id: streamingMessageId,
+      };
+
+      return updated;
+    });
+
+    const updateStatus = (statusText, isError = false) => {
+      setMessages(prev => {
+        const updated = [...prev];
+        const idx = updated.findIndex(msg => msg.id === streamingMessageId);
+        if (idx === -1) {
+          return prev;
+        }
+        updated[idx] = {
+          ...updated[idx],
+          streamStatus: statusText,
+          streamError: isError,
+        };
+        return updated;
+      });
+    };
+
+    const audioElement = audioRef.current;
+    if (audioElement && typeof audioElement.__cleanupStreamingListeners === 'function') {
+      audioElement.__cleanupStreamingListeners();
+    }
+    const cleanupAudioListeners = (() => {
+      if (!audioElement) return () => {};
+      let cleaned = false;
+
+      const handlePlay = () => {
+        updateStatus(getTranslation('streamPlaying', language), false);
+      };
+
+      const handleError = () => {
+        updateStatus(getTranslation('streamError', language), true);
+        cleanup();
+      };
+
+      const handleEnded = () => {
+        updateStatus(getTranslation('streamComplete', language), false);
+        cleanup();
+      };
+
+      const cleanup = () => {
+        if (cleaned) return;
+        cleaned = true;
+        audioElement.removeEventListener('play', handlePlay);
+        audioElement.removeEventListener('error', handleError);
+        audioElement.removeEventListener('ended', handleEnded);
+        audioElement.__cleanupStreamingListeners = null;
+      };
+
+      audioElement.addEventListener('play', handlePlay);
+      audioElement.addEventListener('error', handleError);
+      audioElement.addEventListener('ended', handleEnded);
+
+      audioElement.__cleanupStreamingListeners = cleanup;
+
+      return cleanup;
+    })();
+
+    if (audioElement) {
+      if (!audioElement.paused) {
+        audioElement.pause();
+      }
+      if (audioElement.resumeAudioContext) {
+        try {
+          await audioElement.resumeAudioContext();
+        } catch (err) {
+          console.error('Error resuming audio context:', err);
+        }
+      }
+      audioElement.src = audioUrl;
+      audioElement.load();
+    }
+
+    await new Promise((resolve, reject) => {
+      const handleSourceOpen = () => {
+        let sourceBuffer;
+        try {
+          sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
+        } catch (error) {
+          cleanupAudioListeners();
+          updateStatus(getTranslation('streamError', language), true);
+          reject(error);
+          return;
+        }
+
+        const reader = response.body.getReader();
+        const queue = [];
+        let firstChunkAppended = false;
+        let streamEnded = false;
+        let playbackStarted = false;
+        let resolved = false;
+
+        const finalizeResolve = () => {
+          if (!resolved) {
+            resolved = true;
+            resolve();
+          }
+        };
+
+        const closeStreamWithError = (error) => {
+          updateStatus(getTranslation('streamError', language), true);
+          cleanupAudioListeners();
+          try {
+            reader.cancel();
+          } catch (cancelError) {
+            console.error('Error cancelling reader:', cancelError);
+          }
+          if (mediaSource.readyState === 'open') {
+            try {
+              mediaSource.endOfStream();
+            } catch (endError) {
+              console.error('Error closing media source:', endError);
+            }
+          }
+
+          if (firstChunkAppended) {
+            finalizeResolve();
+            console.error('Streaming error after start:', error);
+          } else {
+            reject(error);
+          }
+        };
+
+        const tryAutoplay = async () => {
+          if (playbackStarted || !autoplayEnabled || !audioElement) {
+            return;
+          }
+          if (audioElement.resumeAudioContext) {
+            try {
+              await audioElement.resumeAudioContext();
+            } catch (err) {
+              console.error('Error resuming audio context for autoplay:', err);
+            }
+          }
+          try {
+            const playPromise = audioElement.play();
+            if (playPromise !== undefined) {
+              await playPromise;
+            }
+            playbackStarted = true;
+            updateStatus(getTranslation('streamPlaying', language), false);
+          } catch (err) {
+            console.warn('Autoplay prevented:', err);
+            updateStatus(getTranslation('streamTapToPlay', language), false);
+          }
+        };
+
+        const pump = async () => {
+          try {
+            while (true) {
+              const { value, done } = await reader.read();
+
+              if (done) {
+                streamEnded = true;
+                if (!sourceBuffer.updating && mediaSource.readyState === 'open') {
+                  try {
+                    mediaSource.endOfStream();
+                  } catch (endErr) {
+                    console.error('Error ending stream:', endErr);
+                  }
+                  updateStatus(getTranslation('streamComplete', language), false);
+                  cleanupAudioListeners();
+                }
+                finalizeResolve();
+                if (!firstChunkAppended) {
+                  cleanupAudioListeners();
+                }
+                break;
+              }
+
+              if (value && value.length) {
+                const chunk = value.buffer.slice(
+                  value.byteOffset,
+                  value.byteOffset + value.byteLength
+                );
+                queue.push(chunk);
+                if (!sourceBuffer.updating) {
+                  try {
+                    sourceBuffer.appendBuffer(queue.shift());
+                  } catch (appendError) {
+                    closeStreamWithError(appendError);
+                    return;
+                  }
+                }
+              }
+            }
+          } catch (err) {
+            closeStreamWithError(err);
+          }
+        };
+
+        sourceBuffer.addEventListener('updateend', () => {
+          if (!firstChunkAppended) {
+            firstChunkAppended = true;
+            const firstChunkStatus = autoplayEnabled
+              ? getTranslation('streamBuffering', language)
+              : getTranslation('streamTapToPlay', language);
+            updateStatus(firstChunkStatus, false);
+            finalizeResolve();
+          }
+
+          if (queue.length > 0 && !sourceBuffer.updating) {
+            try {
+              sourceBuffer.appendBuffer(queue.shift());
+            } catch (appendError) {
+              closeStreamWithError(appendError);
+              return;
+            }
+          } else if (streamEnded && mediaSource.readyState === 'open') {
+            try {
+              mediaSource.endOfStream();
+            } catch (endErr) {
+              console.error('Error ending stream:', endErr);
+            }
+            updateStatus(getTranslation('streamComplete', language), false);
+            cleanupAudioListeners();
+          }
+
+          if (
+            firstChunkAppended &&
+            autoplayEnabled &&
+            !playbackStarted &&
+            audioElement
+          ) {
+            if (audioElement.readyState >= 2) {
+              tryAutoplay();
+            } else {
+              setTimeout(() => {
+                if (
+                  firstChunkAppended &&
+                  autoplayEnabled &&
+                  !playbackStarted &&
+                  audioElement &&
+                  audioElement.readyState >= 2
+                ) {
+                  tryAutoplay();
+                }
+              }, 150);
+            }
+          }
+        });
+
+        mediaSource.addEventListener('error', (err) => {
+          closeStreamWithError(err);
+        });
+
+        pump();
+      };
+
+      mediaSource.addEventListener('sourceopen', handleSourceOpen, { once: true });
+    });
+  }, [autoplayEnabled, audioRef, conversationId, language, setConversationId, setMessages]);
+
   const handleInitSession = useCallback((preferences) => {
     const { name, voiceEnabled, autoplayEnabled, language: prefLanguage } = preferences;
     
@@ -164,6 +467,20 @@ function App() {
   const handleSendMessage = useCallback(async (e) => {
     e?.preventDefault();
     if (!userMessage.trim() || isLoading) return;
+
+    // If audio is currently playing, stop it before sending the next request
+    if (audioRef.current) {
+      try {
+        if (!audioRef.current.paused) {
+          audioRef.current.pause();
+        }
+        audioRef.current.currentTime = 0;
+      } catch (audioError) {
+        console.warn('Error stopping currently playing audio:', audioError);
+      }
+    }
+    setIsAudioPlaying(false);
+    setCurrentlyPlayingUrl(null);
 
     // Client-side rate limiting check
     const now = Date.now();
@@ -214,6 +531,56 @@ function App() {
     ]);
 
     try {
+      let streamingSucceeded = false;
+      if (voiceEnabled) {
+        try {
+          console.info('[Voice] Attempting streaming request', {
+            endpoint: `${BACKEND_URL}/api/v1/chat-voice/stream`,
+            language,
+            conversationId: tempConversationId,
+          });
+          const streamingResponse = await fetch(`${BACKEND_URL}/api/v1/chat-voice/stream`, {
+            method: "POST",
+            headers: { 
+              "Content-Type": "application/json",
+              "X-Client-Version": "1.0.0",
+            },
+            body: JSON.stringify({
+              conversationId: tempConversationId,
+              message: userMessageCopy,
+              language,
+            }),
+          });
+          await processStreamingResponse(streamingResponse);
+          console.info('[Voice] Streaming request succeeded');
+          streamingSucceeded = true;
+        } catch (streamError) {
+          const isTypeError = streamError instanceof TypeError;
+          if (isTypeError) {
+            console.error('[Voice] Streaming request failed (likely network/CORS). Falling back to classic voice.', streamError);
+          } else {
+            console.warn('[Voice] Streaming request failed. Falling back to classic voice.', streamError);
+          }
+          setMessages(prev => {
+            if (!prev.length) return prev;
+            const updated = [...prev];
+            const lastIndex = updated.length - 1;
+            if (updated[lastIndex]?.streaming) {
+              updated[lastIndex] = {
+                sender: 'bot',
+                thinking: true,
+                text: thinkingMessage,
+              };
+            }
+            return updated;
+          });
+        }
+
+        if (streamingSucceeded) {
+          return;
+        }
+      }
+
       const endpoint = voiceEnabled ? '/api/v1/chat-voice' : '/api/v1/chat';
       const response = await fetch(`${BACKEND_URL}${endpoint}`, {
         method: "POST",
@@ -229,111 +596,111 @@ function App() {
       });
 
       if (voiceEnabled) {
-        // Check if response is OK
-        if (!response.ok) {
-          try {
-            const errorData = await response.json();
-            throw new Error(errorData.error || `Server error: ${response.status}`);
-          } catch (parseError) {
-            const errorText = await response.text();
-            throw new Error(`Server error: ${response.status} - ${errorText}`);
-          }
-        }
-        
-        // Check content type
-        const contentType = response.headers.get('content-type');
-        if (!contentType || !contentType.includes('audio')) {
-          // Clone response to read as text for error message
-          const clonedResponse = response.clone();
-          const text = await clonedResponse.text();
-          throw new Error(`Expected audio, got: ${contentType}. Response: ${text.substring(0, 100)}`);
-        }
-        
-        const blob = await response.blob();
-        
-        // Validate blob
-        if (!blob || blob.size === 0) {
-          throw new Error('Invalid audio blob received');
-        }
-        
-        const audioUrl = URL.createObjectURL(blob);
-        audioUrlsRef.current.add(audioUrl);
-        
-        setMessages(prev => [
-          ...prev.slice(0, -1),
-          { sender: 'bot', text: null, audio: audioUrl },
-        ]);
-
-        // Auto-play if enabled
-        if (autoplayEnabled) {
-          setTimeout(async () => {
+          // Check if response is OK
+          if (!response.ok) {
             try {
-              if (!audioRef.current) return;
-              
-              // Stop any currently playing audio
-              if (!audioRef.current.paused) {
-                audioRef.current.pause();
-              }
-              
-              // Ensure audio context is resumed (required for Web Audio API playback)
-              if (audioRef.current.resumeAudioContext) {
-                try {
-                  await audioRef.current.resumeAudioContext();
-                } catch (e) {
-                  console.error('Error resuming audio context:', e);
-                }
-              }
-              
-              // Wait for audio to be ready
-              audioRef.current.src = audioUrl;
-              audioRef.current.load();
-              
-              // Wait for the audio to be ready to play
-              await new Promise((resolve, reject) => {
-                const audio = audioRef.current;
-                if (!audio) {
-                  reject(new Error('Audio element not available'));
-                  return;
-                }
-                
-                const handleCanPlay = () => {
-                  audio.removeEventListener('canplay', handleCanPlay);
-                  audio.removeEventListener('error', handleError);
-                  resolve();
-                };
-                
-                const handleError = (e) => {
-                  audio.removeEventListener('canplay', handleCanPlay);
-                  audio.removeEventListener('error', handleError);
-                  reject(new Error(`Audio load error: ${audio.error?.message || 'Unknown error'}`));
-                };
-                
-                audio.addEventListener('canplay', handleCanPlay);
-                audio.addEventListener('error', handleError);
-                
-                // Fallback timeout
-                setTimeout(() => {
-                  audio.removeEventListener('canplay', handleCanPlay);
-                  audio.removeEventListener('error', handleError);
-                  if (audio.readyState >= 2) { // HAVE_CURRENT_DATA
-                    resolve();
-                  } else {
-                    reject(new Error('Audio load timeout'));
-                  }
-                }, 5000);
-              });
-              
-              // Try to play
-              const playPromise = audioRef.current.play();
-              if (playPromise !== undefined) {
-                await playPromise;
-              }
-            } catch (error) {
-              console.log('Autoplay prevented, manual play required:', error);
-              // Don't show error to user, they can click to play manually
+              const errorData = await response.json();
+              throw new Error(errorData.error || `Server error: ${response.status}`);
+            } catch (parseError) {
+              const errorText = await response.text();
+              throw new Error(`Server error: ${response.status} - ${errorText}`);
             }
-          }, 100);
-        }
+          }
+          
+          // Check content type
+          const contentType = response.headers.get('content-type');
+          if (!contentType || !contentType.includes('audio')) {
+            // Clone response to read as text for error message
+            const clonedResponse = response.clone();
+            const text = await clonedResponse.text();
+            throw new Error(`Expected audio, got: ${contentType}. Response: ${text.substring(0, 100)}`);
+          }
+          
+          const blob = await response.blob();
+          
+          // Validate blob
+          if (!blob || blob.size === 0) {
+            throw new Error('Invalid audio blob received');
+          }
+          
+          const audioUrl = URL.createObjectURL(blob);
+          audioUrlsRef.current.add(audioUrl);
+          
+          setMessages(prev => [
+            ...prev.slice(0, -1),
+            { sender: 'bot', text: null, audio: audioUrl },
+          ]);
+
+          // Auto-play if enabled
+          if (autoplayEnabled) {
+            setTimeout(async () => {
+              try {
+                if (!audioRef.current) return;
+                
+                // Stop any currently playing audio
+                if (!audioRef.current.paused) {
+                  audioRef.current.pause();
+                }
+                
+                // Ensure audio context is resumed (required for Web Audio API playback)
+                if (audioRef.current.resumeAudioContext) {
+                  try {
+                    await audioRef.current.resumeAudioContext();
+                  } catch (e) {
+                    console.error('Error resuming audio context:', e);
+                  }
+                }
+                
+                // Wait for audio to be ready
+                audioRef.current.src = audioUrl;
+                audioRef.current.load();
+                
+                // Wait for the audio to be ready to play
+                await new Promise((resolve, reject) => {
+                  const audio = audioRef.current;
+                  if (!audio) {
+                    reject(new Error('Audio element not available'));
+                    return;
+                  }
+                  
+                  const handleCanPlay = () => {
+                    audio.removeEventListener('canplay', handleCanPlay);
+                    audio.removeEventListener('error', handleError);
+                    resolve();
+                  };
+                  
+                  const handleError = (e) => {
+                    audio.removeEventListener('canplay', handleCanPlay);
+                    audio.removeEventListener('error', handleError);
+                    reject(new Error(`Audio load error: ${audio.error?.message || 'Unknown error'}`));
+                  };
+                  
+                  audio.addEventListener('canplay', handleCanPlay);
+                  audio.addEventListener('error', handleError);
+                  
+                  // Fallback timeout
+                  setTimeout(() => {
+                    audio.removeEventListener('canplay', handleCanPlay);
+                    audio.removeEventListener('error', handleError);
+                    if (audio.readyState >= 2) { // HAVE_CURRENT_DATA
+                      resolve();
+                    } else {
+                      reject(new Error('Audio load timeout'));
+                    }
+                  }, 5000);
+                });
+                
+                // Try to play
+                const playPromise = audioRef.current.play();
+                if (playPromise !== undefined) {
+                  await playPromise;
+                }
+              } catch (error) {
+                console.log('Autoplay prevented, manual play required:', error);
+                // Don't show error to user, they can click to play manually
+              }
+            }, 100);
+          }
       } else {
         // Check if response is OK for text chat
         if (!response.ok) {
@@ -385,7 +752,8 @@ function App() {
         ? 'language'
         : 'default';
       
-      const errorMessage = errorMessages[language]?.[errorType] || errorMessages.en[errorType];
+      const translatedDefault = errorMessages[language]?.[errorType] || errorMessages.en[errorType];
+      const errorMessage = translatedDefault;
       
       setMessages(prev => [
         ...prev.slice(0, -1),
@@ -398,7 +766,7 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [conversationId, voiceEnabled, autoplayEnabled, userMessage, isLoading, language]);
+  }, [conversationId, voiceEnabled, autoplayEnabled, userMessage, isLoading, language, processStreamingResponse]);
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === "Enter") {
@@ -458,7 +826,7 @@ function App() {
       
       return (
         <ChatMessage
-          key={idx}
+          key={msg.id ?? idx}
           message={msg}
           isUser={isUser}
           voiceEnabled={voiceEnabled}
@@ -529,8 +897,27 @@ function App() {
                 onAutoplayToggle={() => setAutoplayEnabled(!autoplayEnabled)}
                 onLanguageToggle={() => {
                   const newLanguage = language === 'en' ? 'fr' : 'en';
+                  if (audioRef.current) {
+                    try {
+                      if (!audioRef.current.paused) {
+                        audioRef.current.pause();
+                      }
+                      audioRef.current.currentTime = 0;
+                    } catch (audioError) {
+                      console.warn('Error stopping audio during language toggle:', audioError);
+                    }
+                  }
+                  setIsAudioPlaying(false);
+                  setCurrentlyPlayingUrl(null);
+
                   setLanguage(newLanguage);
                   localStorage.setItem('languagePreference', newLanguage);
+                  const newConversationId = uuidv4();
+                  setConversationId(newConversationId);
+                  console.info('[Language] Switched language', {
+                    language: newLanguage,
+                    conversationId: newConversationId,
+                  });
                 }}
               />
 

@@ -205,39 +205,87 @@ function InitialPreferences({ onSessionStart }) {
                 >
                   {getTranslation('communicationPreferences', language)}
                 </Typography>
-                <Stack direction="column" spacing={1.5}>
-                  <Chip
-                    label={getTranslation('voiceResponse', language)}
-                    onClick={() => setVoiceEnabled(!voiceEnabled)}
+                <Stack
+                  direction="row"
+                  spacing={3}
+                  sx={{
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                    justifyContent: { xs: 'space-between', sm: 'flex-start' },
+                    rowGap: 2,
+                  }}
+                >
+                  <Box
                     sx={{
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                      backgroundColor: voiceEnabled ? theme.colors.primary : theme.colors.border,
-                      color: voiceEnabled ? 'white' : theme.colors.textLight,
-                      width: 'fit-content',
-                      '&:hover': {
-                        backgroundColor: voiceEnabled ? theme.colors.primaryDark : theme.colors.textMuted,
-                      },
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1,
+                      minWidth: { xs: '45%', sm: 'auto' },
                     }}
-                  />
-                  {voiceEnabled && (
-                    <Chip
-                      label={autoplayEnabled ? getTranslation('autoplayOn', language) : getTranslation('autoplayOff', language)}
-                      variant={autoplayEnabled ? 'filled' : 'outlined'}
-                      onClick={() => setAutoplayEnabled(!autoplayEnabled)}
+                  >
+                    <Typography
+                      variant="body2"
                       sx={{
-                        cursor: 'pointer',
+                        color: theme.colors.text,
                         fontWeight: 600,
-                        backgroundColor: autoplayEnabled ? theme.colors.primary : 'transparent',
-                        color: autoplayEnabled ? 'white' : theme.colors.primary,
-                        borderColor: theme.colors.primary,
-                        width: 'fit-content',
-                        '&:hover': {
-                          backgroundColor: autoplayEnabled ? theme.colors.primaryDark : 'rgba(99, 102, 241, 0.1)',
+                        fontFamily: '"museo-sans", sans-serif',
+                      }}
+                    >
+                      {getTranslation('voiceResponse', language)}
+                    </Typography>
+                    <Switch
+                      checked={voiceEnabled}
+                      onChange={() => setVoiceEnabled(!voiceEnabled)}
+                      sx={{
+                        '& .MuiSwitch-switchBase.Mui-checked': {
+                          color: '#ffffff',
+                        },
+                        '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                          backgroundColor: theme.colors.primary,
+                        },
+                        '& .MuiSwitch-track': {
+                          backgroundColor: theme.colors.border,
                         },
                       }}
                     />
-                  )}
+                  </Box>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1,
+                      minWidth: { xs: '45%', sm: 'auto' },
+                    }}
+                  >
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: voiceEnabled ? theme.colors.text : theme.colors.textLight,
+                        fontWeight: 600,
+                        fontFamily: '"museo-sans", sans-serif',
+                      }}
+                    >
+                      {voiceEnabled
+                        ? (autoplayEnabled ? getTranslation('autoplayOn', language) : getTranslation('autoplayOff', language))
+                        : getTranslation('autoplayOff', language)}
+                    </Typography>
+                    <Switch
+                      checked={autoplayEnabled}
+                      onChange={() => setAutoplayEnabled(!autoplayEnabled)}
+                      disabled={!voiceEnabled}
+                      sx={{
+                        '& .MuiSwitch-switchBase.Mui-checked': {
+                          color: '#ffffff',
+                        },
+                        '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                          backgroundColor: theme.colors.primary,
+                        },
+                        '& .MuiSwitch-track': {
+                          backgroundColor: theme.colors.border,
+                        },
+                      }}
+                    />
+                  </Box>
                 </Stack>
               </Box>
 
